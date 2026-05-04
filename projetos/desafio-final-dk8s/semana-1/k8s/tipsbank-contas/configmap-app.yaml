@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: configmap-app
+  namespace: tipsbank-contas
+data:
+  LOG_LEVEL: "INFO"

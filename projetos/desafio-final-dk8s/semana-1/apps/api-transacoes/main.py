@@ -16,11 +16,20 @@ from sqlalchemy import Column, String, Numeric, DateTime, create_engine, func
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format='{"ts":"%(asctime)s","level":"%(levelname)s","service":"api-transacoes","msg":"%(message)s"}',
-)
+_LOG_FMT = '{"ts":"%(asctime)s","level":"%(levelname)s","service":"api-transacoes","msg":"%(message)s"}'
+_LOG_FILE = os.getenv("LOG_FILE", "")
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format=_LOG_FMT)
 log = logging.getLogger("api-transacoes")
+
+# Writes to file when LOG_FILE is set (emptyDir volume in K8s).
+# No-op in local docker-compose where LOG_FILE is unset.
+if _LOG_FILE:
+    from pathlib import Path
+    Path(_LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
+    _fh = logging.FileHandler(_LOG_FILE)
+    _fh.setFormatter(logging.Formatter(_LOG_FMT))
+    log.addHandler(_fh)
 
 DB_URL = os.getenv(
     "DB_URL",

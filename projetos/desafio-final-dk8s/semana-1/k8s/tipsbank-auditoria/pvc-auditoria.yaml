@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-auditoria-nfs
+  namespace: tipsbank-auditoria
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 5Gi
+  # Vincula explicitamente ao PV criado em pv-nfs-auditoria.yaml.
+  # storageClassName: "" desativa a provisão dinâmica e usa binding estático.
+  volumeName: pv-nfs-auditoria
+  storageClassName: ""
