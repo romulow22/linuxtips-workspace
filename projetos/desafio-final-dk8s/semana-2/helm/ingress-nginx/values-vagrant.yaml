@@ -1,0 +1,24 @@
+# NodePort — expõe o controller nas portas 30080 (HTTP) e 30443 (HTTPS).
+# O admission webhook é desabilitado porque o post-install roda antes dos
+# workers ingressarem no cluster, sem node disponível para agendar o Job.
+controller:
+  service:
+    type: NodePort
+    nodePorts:
+      http: 30080
+      https: 30443
+
+  ingressClassResource:
+    name: nginx
+    enabled: true
+    default: true
+
+  admissionWebhooks:
+    enabled: false
+
+  config:
+    proxy-body-size: "10m"
+    proxy-read-timeout: "60"
+    proxy-send-timeout: "60"
+    allow-snippet-annotations: "true"
+    limit-req-status-code: "429"

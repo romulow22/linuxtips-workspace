@@ -1,0 +1,44 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auditoria
+  namespace: tipsbank-auditoria
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: auditoria
+  template:
+    metadata:
+      labels:
+        app: auditoria
+    spec:
+      # fsGroup garante que o PV NFS seja gravável pelo user nonroot (uid 65532)
+      securityContext:
+        fsGroup: 65532
+      # imagePullSecrets:
+      #   - name: registry-credentials
+      containers:
+        - name: auditoria
+          image: romulow22/tipsbank-auditoria:v1.0.0
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DATA_DIR
+              value: "/data"
+            - name: LOG_LEVEL
+              value: "INFO"
+          volumeMounts:
+            - name: auditdata
+              mountPath: /data
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+      volumes:
+        - name: auditdata
+          persistentVolumeClaim:
+            claimName: pvc-auditoria-nfs

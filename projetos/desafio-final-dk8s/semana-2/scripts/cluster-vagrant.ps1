@@ -11,6 +11,11 @@ param(
     [switch]$Merge
 )
 
+# Point vagrant at the Vagrantfile directory regardless of where this script is called from
+$SCRIPT_DIR  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$VAGRANT_DIR = Join-Path (Split-Path -Parent $SCRIPT_DIR) "vagrant"
+$env:VAGRANT_CWD = $VAGRANT_DIR
+
 # Functions
 function Print-Info {
     param([string]$Message)
@@ -41,11 +46,12 @@ function Print-Header {
     Write-Host ""
 }
 
-# Load .env if exists
+# Load .env-vagrant if exists
 function Load-Env {
-    if (Test-Path .env) {
-        Print-Info "Loading configuration from .env..."
-        Get-Content .env | ForEach-Object {
+    $envFile = Join-Path $SCRIPT_DIR ".env-vagrant"
+    if (Test-Path $envFile) {
+        Print-Info "Loading configuration from .env-vagrant..."
+        Get-Content $envFile | ForEach-Object {
             $line = $_.Trim()
             if ($line -match '^\s*#' -or -not $line) { return }
             if ($line -match '^export\s+([\w_]+)=(.+)') {
@@ -59,7 +65,7 @@ function Load-Env {
         }
         Print-Success "Configuration loaded"
     } else {
-        Print-Warning "No .env file found, using defaults"
+        Print-Warning "No .env-vagrant file found, using defaults"
     }
 }
 
@@ -148,6 +154,7 @@ function Create-Cluster {
             Print-Success "Cluster is ready!"
             Print-Info "Running final validation..."
             Validate-Cluster
+            Invoke-FullDeploy
         } else {
             Print-Error "Cluster did not become healthy in time."
         }
@@ -201,7 +208,7 @@ function SSH-Node {
 function Get-Kubeconfig {
     param(
         [switch]$Merge,
-        [string]$ClusterName = "vagrant-k8s"
+        [string]$ClusterName = "kubeadm-local"
     )
 
     Print-Header "Getting Kubeconfig"
@@ -274,11 +281,13 @@ function Get-Kubeconfig {
 
         if ($originalKubeconfig) { $env:KUBECONFIG = $originalKubeconfig }
         else { Remove-Item Env:KUBECONFIG -ErrorAction SilentlyContinue }
-
+        
+        kubectl config use-context kubeadm-local
+        
         Print-Success "Merge complete!"
         Print-Info "Run 'kubectl config use-context $ClusterName' to activate."
     } else {
-        Print-Info "To merge: .\cluster.ps1 kubeconfig -Merge"
+        Print-Info "To merge: .\scripts\cluster-vagrant.ps1 kubeconfig -Merge"
         Print-Info "To use directly: `$env:KUBECONFIG = '$localKubeconfig'"
     }
 }
@@ -295,6 +304,29 @@ function Restart-Cluster {
     } else {
         Print-Error "VMs failed to restart."
     }
+}
+
+# Install addons
+function Install-Addons {
+    Print-Header "Installing Helm Addons (vagrant)"
+    & "$SCRIPT_DIR\install-addons.ps1" -Env vagrant
+    if ($LASTEXITCODE -ne 0) { Print-Error "install-addons.ps1 falhou." }
+    else { Print-Success "Addons instalados (ingress-nginx, cert-manager, nfs-ganesha)." }
+}
+
+# Deploy apps
+function Invoke-AppDeploy {
+    Print-Header "Deploying TipsBank Apps (vagrant)"
+    & "$SCRIPT_DIR\deploy-apps.ps1" -Env vagrant
+    if ($LASTEXITCODE -ne 0) { Print-Error "deploy-apps.ps1 falhou." }
+    else { Print-Success "Apps implantados." }
+}
+
+# Full deploy: addons + apps
+function Invoke-FullDeploy {
+    Install-Addons
+    if ($LASTEXITCODE -ne 0) { return }
+    Invoke-AppDeploy
 }
 
 # Provision
@@ -326,15 +358,17 @@ function Show-Help {
 
 Kubernetes Cluster Management Script (PowerShell)
 
-Usage: .\cluster.ps1 [command] [options]
+Usage: .\scripts\cluster-vagrant.ps1 [command] [options]
 
 Commands:
-  create        Create a new cluster and wait for it to be ready
+  create        Create cluster, install addons and deploy all apps
   destroy       Destroy the cluster
   status        Show cluster status (VMs, nodes, and pods)
   validate      Validate cluster health
   restart       Restart the cluster and wait for readiness
   provision     Re-run provisioners
+  addons        Install/upgrade Helm addons (ingress-nginx, cert-manager, nfs-ganesha)
+  deploy        Deploy/redeploy all app manifests (cluster must already exist)
   ssh [node]    SSH into a node (default: control-plane)
   kubeconfig    Get kubeconfig for local access
     -Merge      Merge the new config with your default kubeconfig
@@ -354,6 +388,8 @@ switch ($cmd) {
     "status"     { Show-Status }
     "validate"   { Validate-Cluster }
     "restart"    { Restart-Cluster }
+    "addons"     { Install-Addons }
+    "deploy"     { Invoke-AppDeploy }
     "provision"  { Provision-Cluster }
     "ssh"        { SSH-Node $Node }
     "kubeconfig" { Get-Kubeconfig -Merge:$Merge }
