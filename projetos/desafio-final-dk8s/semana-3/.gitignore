@@ -18,6 +18,8 @@ build/
 .env
 .env.local
 .env.*.local
+*.env-*
+
 
 # IDE
 .vscode/
@@ -34,16 +36,18 @@ Thumbs.db
 logs/
 
 # Kubernetes artefacts (do aluno, nunca commitados)
+kubeconfig
 *.kubeconfig
 kubeconfig-*
 *.key
+*.pub
 *.crt
 *.csr
 ca.crt
 admin.conf
 
 # Evidências pessoais do aluno
-docs/EVIDENCIAS.md
+#docs/EVIDENCIAS.md
 evidencias/
 
 # Helm
@@ -53,3 +57,7 @@ helm/*/Chart.lock
 
 # Locust output
 locust/reports/
+
+# Vagrant
+.vagrant/
+joincluster.sh

@@ -191,7 +191,9 @@ function Remove-EKSCluster {
     if ($confirm -ne "yes") { Write-Host "Cancelado."; return }
     Write-Host "Destruindo cluster EKS (5-10 min)..." -ForegroundColor Yellow
     eksctl delete cluster --name $CLUSTER_NAME --region $REGION
-    kubectl config delete-context $EKS_CONTEXT 2>&1 | Out-Null
+    # eksctl already removes the context; ignore error if already gone
+    $ctxExists = kubectl config get-contexts $EKS_CONTEXT 2>$null
+    if ($ctxExists) { kubectl config delete-context $EKS_CONTEXT | Out-Null }
     Write-Host "Cluster destruido." -ForegroundColor Green
 }
 

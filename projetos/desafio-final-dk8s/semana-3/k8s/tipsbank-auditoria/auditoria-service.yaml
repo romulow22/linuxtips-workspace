@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: auditoria
+  namespace: tipsbank-auditoria
+  labels:
+    app: auditoria
+spec:
+  selector:
+    app: auditoria
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
