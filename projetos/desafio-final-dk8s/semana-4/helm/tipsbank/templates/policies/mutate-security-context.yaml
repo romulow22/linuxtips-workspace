@@ -1,0 +1,77 @@
+{{- if .Values.kyverno.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mutate-security-context
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+  annotations:
+    policies.kyverno.io/title: Injetar securityContext nos containers
+    policies.kyverno.io/category: Segurança TipsBank
+    policies.kyverno.io/description: >-
+      Injeta automaticamente runAsNonRoot, allowPrivilegeEscalation e
+      readOnlyRootFilesystem nos containers das APIs TipsBank.
+spec:
+  rules:
+    - name: inject-base-security
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - tipsbank-contas
+                - tipsbank-transacoes
+                - tipsbank-auditoria
+                - tipsbank-web
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              selector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - postgres
+                      - postgres-replica
+      mutate:
+        patchStrategicMerge:
+          spec:
+            containers:
+              - (name): "*"
+                securityContext:
+                  +(runAsNonRoot): true
+                  +(allowPrivilegeEscalation): false
+
+    - name: inject-readonly-rootfs
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - tipsbank-contas
+                - tipsbank-transacoes
+                - tipsbank-auditoria
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              selector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - postgres
+                      - postgres-replica
+      mutate:
+        patchStrategicMerge:
+          spec:
+            containers:
+              - (name): "*"
+                securityContext:
+                  +(readOnlyRootFilesystem): true
+{{- end }}

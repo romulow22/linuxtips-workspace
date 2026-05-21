@@ -1,0 +1,149 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: tipsbank-transacoes
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: tipsbank-transacoes
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+  namespace: tipsbank-transacoes
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: api-transacoes
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-web
+  namespace: tipsbank-transacoes
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: api-transacoes
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tipsbank-web
+    ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: tipsbank-transacoes
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: api-transacoes
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: {{ .Values.monitoring.namespace }}
+    ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-contas
+  namespace: tipsbank-transacoes
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: api-transacoes
+  policyTypes: [Egress]
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tipsbank-contas
+    ports:
+    - port: 8080
+      protocol: TCP
+    - port: 5432
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-to-auditoria
+  namespace: tipsbank-transacoes
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: api-transacoes
+  policyTypes: [Egress]
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tipsbank-auditoria
+    ports:
+    - port: 8080
+      protocol: TCP
+  - to:
+    - ipBlock:
+        cidr: 0.0.0.0/0
+        except:
+        - 169.254.169.254/32
+        - 10.0.0.0/8
+        - 192.168.0.0/16
+    ports:
+    - port: 443
+      protocol: TCP

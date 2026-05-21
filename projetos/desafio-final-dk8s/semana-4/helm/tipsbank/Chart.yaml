@@ -1,0 +1,14 @@
+apiVersion: v2
+name: tipsbank
+description: TipsBank — banco digital completo em Kubernetes (Helm umbrella chart)
+type: application
+version: 1.0.1
+appVersion: "1.0.0"
+keywords:
+  - tipsbank
+  - banking
+  - kubernetes
+  - linuxtips
+maintainers:
+  - name: Romulo Alves
+    email: romuloww@gmail.com

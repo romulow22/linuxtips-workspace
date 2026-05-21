@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-api-auditoria
+  namespace: tipsbank-auditoria
+  annotations:
+    cert-manager.io/cluster-issuer: selfsigned-issuer
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    # Upstream Hashing por IP: requests do mesmo cliente sempre chegam ao mesmo pod.
+    # Alternativa ao cookie affinity — útil para clientes que não persistem cookies.
+    nginx.ingress.kubernetes.io/upstream-hash-by: "$remote_addr"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - api.tipsbank.local
+      secretName: tipsbank-api-tls
+  rules:
+    - host: api.tipsbank.local
+      http:
+        paths:
+          - path: /auditoria(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: auditoria
+                port:
+                  number: 8080

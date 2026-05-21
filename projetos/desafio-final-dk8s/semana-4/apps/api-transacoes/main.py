@@ -16,11 +16,20 @@ from sqlalchemy import Column, String, Numeric, DateTime, create_engine, func
 from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
-logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
-    format='{"ts":"%(asctime)s","level":"%(levelname)s","service":"api-transacoes","msg":"%(message)s"}',
-)
+_LOG_FMT = '{"ts":"%(asctime)s","level":"%(levelname)s","service":"api-transacoes","msg":"%(message)s"}'
+_LOG_FILE = os.getenv("LOG_FILE", "")
+
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), format=_LOG_FMT)
 log = logging.getLogger("api-transacoes")
+
+# Writes to file when LOG_FILE is set (emptyDir volume in K8s).
+# No-op in local docker-compose where LOG_FILE is unset.
+if _LOG_FILE:
+    from pathlib import Path
+    Path(_LOG_FILE).parent.mkdir(parents=True, exist_ok=True)
+    _fh = logging.FileHandler(_LOG_FILE)
+    _fh.setFormatter(logging.Formatter(_LOG_FMT))
+    log.addHandler(_fh)
 
 DB_URL = os.getenv(
     "DB_URL",
@@ -187,6 +196,21 @@ def obter(tx_id: str):
         return tx
     finally:
         s.close()
+
+
+@app.post("/pix")
+def pix(payload: TransferenciaIn):
+    """Mock PIX endpoint — disponível apenas em v2."""
+    if APP_VERSION != "v2":
+        raise HTTPException(status_code=404, detail="endpoint disponivel apenas em v2")
+    return {
+        "tipo": "pix",
+        "origem_id": payload.origem_id,
+        "destino_id": payload.destino_id,
+        "valor": str(payload.valor),
+        "status": "agendado",
+        "version": APP_VERSION,
+    }
 
 
 @app.get("/extrato/{conta_id}", response_model=list[TransacaoOut])

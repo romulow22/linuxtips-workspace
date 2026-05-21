@@ -1,0 +1,27 @@
+{{- range list "tipsbank-contas" "tipsbank-transacoes" "tipsbank-auditoria" "tipsbank-web" }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ . }}
+  labels:
+    {{- include "tipsbank.labels" $ | nindent 4 }}
+    kubernetes.io/metadata.name: {{ . }}
+{{- end }}
+{{/*
+  O namespace de monitoring só é criado se ainda não existir no cluster.
+  Quando o kube-prometheus-stack é instalado antes deste chart, ele já cria
+  e possui esse namespace — tentar recriá-lo causaria conflito de ownership.
+*/}}
+{{- if .Values.monitoring.enabled }}
+{{- if not (lookup "v1" "Namespace" "" .Values.monitoring.namespace) }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.monitoring.namespace }}
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+    kubernetes.io/metadata.name: {{ .Values.monitoring.namespace }}
+{{- end }}
+{{- end }}

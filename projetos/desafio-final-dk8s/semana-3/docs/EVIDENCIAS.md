@@ -662,6 +662,7 @@ Node-Selectors:              <none>
 Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
                              node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
 Events:                      <none>
+
 PS H:\Cursos\linuxtips\linuxtips-workspace\projetos\desafio-final-dk8s\semana-3> kubectl describe pod -n tipsbank-web -l app=web
 Name:             web-8657c9d948-qcd2j
 Namespace:        tipsbank-web
@@ -861,10 +862,7 @@ Tolerations:                 compliance=strict:NoSchedule
 Events:                      <none>
 ```
 
-(2) Cluster Vagrant
-```
 
-```
 
 #### Verificação: restart após kill manual do processo
 
@@ -896,8 +894,6 @@ LAST SEEN   TYPE     REASON    OBJECT                           MESSAGE
 
 #### Deploy de versão quebrada para testar
 
-
-
 ```
 romul@HOME MINGW64 /h/Cursos/linuxtips/linuxtips-workspace (main)
 $ kubectl set image deployment/api-transacoes api-transacoes=romulow22/tipsbank-api-transacoes:v1.9.9 -n tipsbank-transacoes
@@ -928,8 +924,6 @@ $ for i in $(seq 1 5); do curl -sk https://a0e2de66d6af4485dbb7f1ee69e00017-4a0f
 
 #### Rollback
 
-
-
 ```
 romul@HOME MINGW64 /h/Cursos/linuxtips/linuxtips-workspace (main)
 $ kubectl rollout undo deployment/api-transacoes -n tipsbank-transacoes
@@ -949,8 +943,6 @@ api-transacoes-v2-7c66796b98-g6p82   2/2     Running       0          86m
 ```
 
 #### Histórico de revisões
-
-
 
 ```
 romul@HOME MINGW64 /h/Cursos/linuxtips/linuxtips-workspace (main)
@@ -1063,7 +1055,6 @@ pod "teste-sem-toleration" deleted from default namespace
 
 #### QoS Class verificado
 
-(1) Clouster EKS
 ```
 romul@HOME MINGW64 /h/Cursos/linuxtips/linuxtips-workspace/projetos/desafio-final-dk8s/semana-3 (main)
 $ kubectl get pods -A -o json | jq -r '.items[] | select(.metadata.namespace | startswith("tipsbank")) | "\(.metadata.namespace)/\(.metadata.name)\t\(.status.qosClass)"' | column -t

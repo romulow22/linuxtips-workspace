@@ -1,0 +1,83 @@
+## values-eks-prod.yaml — EKS (AWS) + ambiente PROD
+## Uso: helm install tipsbank helm/tipsbank/ -f helm/tipsbank/values-eks-prod.yaml
+
+global:
+  env: prod
+  imagePullPolicy: Always
+
+ingress:
+  # No EKS o FQDN do NLB muda a cada recriação do cluster — passe via --set:
+  #   --set ingress.appHost=$nlb --set ingress.apiHost=$nlb
+  # appHost e apiHost com o mesmo FQDN criam routing por path:
+  #   <nlb>/           → web   |   <nlb>/contas/   → API contas
+  #   <nlb>/transacoes/→ API transacoes   |   <nlb>/auditoria/ → API auditoria
+  appHost: ""   # sobrescrever via --set ingress.appHost=<nlb-fqdn>
+  apiHost: ""   # sobrescrever via --set ingress.apiHost=<nlb-fqdn>
+  rateLimitRps: "50"
+  rateLimitBurstMultiplier: "1"
+
+postgres:
+  storageClass: gp2
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 2Gi
+
+contas:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    cpuUtilization: 70
+
+transacoes:
+  replicas: 3
+  resources:
+    requests:
+      cpu: 200m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 15
+    cpuUtilization: 70
+
+auditoria:
+  replicas: 3
+  storageClass: nfs-ganesha
+  storage: 20Gi
+  resources:
+    requests:
+      cpu: 200m
+      memory: 256Mi
+    limits:
+      cpu: "1"
+      memory: 512Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    memoryUtilization: 75
+
+web:
+  replicas: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    cpuUtilization: 70

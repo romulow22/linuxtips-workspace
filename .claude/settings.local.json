@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(kubectl get *)"
+      "Bash(kubectl get *)",
+      "Bash(Get-ChildItem -Path \"H:\\\\Cursos\\\\linuxtips\\\\linuxtips-workspace\\\\projetos\\\\desafio-final-dk8s\\\\semana-4\\\\k8s\\\\\" -Recurse -File | Select-Object -ExpandProperty FullName | Sort-Object)",
+      "Bash(helm template *)"
     ]
   }
 }

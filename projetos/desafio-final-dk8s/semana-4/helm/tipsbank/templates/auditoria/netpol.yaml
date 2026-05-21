@@ -1,0 +1,121 @@
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: tipsbank-auditoria
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: tipsbank-auditoria
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+  namespace: tipsbank-auditoria
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: auditoria
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-web-and-transacoes
+  namespace: tipsbank-auditoria
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: auditoria
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tipsbank-web
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tipsbank-transacoes
+    ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: tipsbank-auditoria
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: auditoria
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: {{ .Values.monitoring.namespace }}
+    ports:
+    - port: 8080
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-nfs
+  namespace: tipsbank-auditoria
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      app: auditoria
+  policyTypes: [Egress]
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: nfs-provisioner
+    ports:
+    - port: 2049
+      protocol: TCP
+    - port: 2049
+      protocol: UDP

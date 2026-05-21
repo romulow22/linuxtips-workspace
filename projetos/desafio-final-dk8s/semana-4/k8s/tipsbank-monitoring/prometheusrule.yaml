@@ -1,0 +1,61 @@
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: tipsbank-slo-alerts
+  namespace: tipsbank-monitoring
+  labels:
+    release: kube-prometheus-stack
+spec:
+  groups:
+    - name: tipsbank.slo
+      interval: 30s
+      rules:
+        - alert: TipsBankApiDown
+          expr: absent(up{job=~"api-.*"}) or up{job=~"api-.*"} == 0
+          for: 2m
+          labels:
+            severity: critical
+            team: tipsbank
+          annotations:
+            summary: "API {{ $labels.job }} está indisponível"
+            description: "O target {{ $labels.instance }} do job {{ $labels.job }} está DOWN há mais de 2 minutos."
+
+        - alert: TipsBankP99Alto
+          expr: |
+            histogram_quantile(0.99,
+              sum(rate(http_request_duration_seconds_bucket{job=~"api-.*"}[5m])) by (le, job)
+            ) > 0.01
+          for: 5m
+          labels:
+            severity: warning
+            team: tipsbank
+          annotations:
+            summary: "Latência p99 alta em {{ $labels.job }}"
+            description: "Latência p99 acima de 10ms por 5 minutos no job {{ $labels.job }}."
+
+        - alert: TipsBankErroAltoApi
+          expr: |
+            sum(rate(http_requests_total{job=~"api-.*", status=~"5.."}[3m])) by (job)
+            /
+            sum(rate(http_requests_total{job=~"api-.*"}[3m])) by (job)
+            > 0.05
+          for: 3m
+          labels:
+            severity: critical
+            team: tipsbank
+          annotations:
+            summary: "Taxa de erro 5xx alta em {{ $labels.job }}"
+            description: "Mais de 5% das requisições retornando 5xx nos últimos 3 minutos no job {{ $labels.job }}."
+
+        - alert: TipsBankPodCrashLoop
+          expr: |
+            increase(kube_pod_container_status_restarts_total{
+              namespace=~"tipsbank-.*"
+            }[10m]) > 3
+          for: 0m
+          labels:
+            severity: warning
+            team: tipsbank
+          annotations:
+            summary: "Pod {{ $labels.pod }} em CrashLoop"
+            description: "O container {{ $labels.container }} do pod {{ $labels.pod }} reiniciou mais de 3 vezes nos últimos 10 minutos."

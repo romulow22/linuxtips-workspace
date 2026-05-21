@@ -1,0 +1,77 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: mutate-security-context
+  annotations:
+    policies.kyverno.io/title: Injetar securityContext nos containers
+    policies.kyverno.io/category: Segurança TipsBank
+    policies.kyverno.io/description: >-
+      Injeta automaticamente runAsNonRoot, allowPrivilegeEscalation e
+      readOnlyRootFilesystem nos containers das APIs TipsBank, caso esses
+      campos não estejam definidos. O serviço web tem readOnlyRootFilesystem
+      explicitamente false para compatibilidade com nginx.
+spec:
+  rules:
+    # Regra 1: injeta runAsNonRoot + allowPrivilegeEscalation em todos os pods tipsbank (exceto postgres)
+    - name: inject-base-security
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - tipsbank-contas
+                - tipsbank-transacoes
+                - tipsbank-auditoria
+                - tipsbank-web
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              selector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - postgres
+                      - postgres-replica
+      mutate:
+        patchStrategicMerge:
+          spec:
+            containers:
+              - (name): "*"
+                securityContext:
+                  +(runAsNonRoot): true
+                  +(allowPrivilegeEscalation): false
+
+    # Regra 2: injeta readOnlyRootFilesystem apenas nas APIs Python (não no web/nginx)
+    - name: inject-readonly-rootfs
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              namespaces:
+                - tipsbank-contas
+                - tipsbank-transacoes
+                - tipsbank-auditoria
+      exclude:
+        any:
+          - resources:
+              kinds:
+                - Pod
+              selector:
+                matchExpressions:
+                  - key: app
+                    operator: In
+                    values:
+                      - postgres
+                      - postgres-replica
+      mutate:
+        patchStrategicMerge:
+          spec:
+            containers:
+              - (name): "*"
+                securityContext:
+                  +(readOnlyRootFilesystem): true

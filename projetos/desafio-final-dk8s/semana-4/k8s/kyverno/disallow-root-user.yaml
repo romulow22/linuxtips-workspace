@@ -1,0 +1,41 @@
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: disallow-root-user
+  annotations:
+    policies.kyverno.io/title: Proibir execução como root
+    policies.kyverno.io/category: Segurança TipsBank
+    policies.kyverno.io/description: >-
+      Rejeita pods que definem explicitamente runAsUser: 0 no securityContext
+      do pod ou de qualquer container/initContainer.
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: check-pod-security-context
+      match:
+        any:
+          - resources:
+              kinds:
+                - Pod
+      exclude:
+        any:
+          - resources:
+              namespaces:
+                - kube-system
+                - kyverno
+                - cert-manager
+                - ingress-nginx
+                - tipsbank-monitoring
+      validate:
+        message: "runAsUser: 0 (root) não é permitido. Use UID > 0."
+        pattern:
+          spec:
+            =(securityContext):
+              =(runAsUser): ">0"
+            containers:
+              - =(securityContext):
+                  =(runAsUser): ">0"
+            =(initContainers):
+              - =(securityContext):
+                  =(runAsUser): ">0"

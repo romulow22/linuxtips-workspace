@@ -1,0 +1,117 @@
+---
+# [1/5] Default deny — bloqueia todo ingress e egress por padrão
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny
+  namespace: tipsbank-auditoria
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# [2/5] Egress DNS — todos os pods podem resolver nomes via kube-dns
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: tipsbank-auditoria
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+    ports:
+    - port: 53
+      protocol: UDP
+    - port: 53
+      protocol: TCP
+---
+# [3/5] Ingress Controller → auditoria (acesso direto via api.tipsbank.local)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-ingress-controller
+  namespace: tipsbank-auditoria
+spec:
+  podSelector:
+    matchLabels:
+      app: auditoria
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - port: 8080
+      protocol: TCP
+---
+# [4/5] web → auditoria (abordagem híbrida) e api-transacoes → auditoria (eventos)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-web-and-transacoes
+  namespace: tipsbank-auditoria
+spec:
+  podSelector:
+    matchLabels:
+      app: auditoria
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tipsbank-web
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tipsbank-transacoes
+    ports:
+    - port: 8080
+      protocol: TCP
+---
+# [5/6] Prometheus → auditoria (scrape /metrics)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-prometheus-scrape
+  namespace: tipsbank-auditoria
+spec:
+  podSelector:
+    matchLabels:
+      app: auditoria
+  policyTypes: [Ingress]
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: tipsbank-monitoring
+    ports:
+    - port: 8080
+      protocol: TCP
+---
+# [6/6] auditoria → nfs-provisioner (porta 2049 — gravação de eventos em PV NFS)
+#   O kubelet monta o volume NFS no nó, mas a NetworkPolicy protege o tráfego
+#   do pod para o servidor NFS caso o mount use o namespace de rede do pod.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-egress-nfs
+  namespace: tipsbank-auditoria
+spec:
+  podSelector:
+    matchLabels:
+      app: auditoria
+  policyTypes: [Egress]
+  egress:
+  - to:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: nfs-provisioner
+    ports:
+    - port: 2049
+      protocol: TCP
+    - port: 2049
+      protocol: UDP
