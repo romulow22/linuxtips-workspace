@@ -1,0 +1,150 @@
+## TipsBank — valores padrão (development / lab local)
+## Sobrescreva com values-dev.yaml ou values-prod.yaml conforme o ambiente.
+
+# ---------------------------------------------------------------------------
+# Global
+# ---------------------------------------------------------------------------
+global:
+  team: tipsbank
+  env: prod
+  imagePullPolicy: IfNotPresent
+  # imagePullSecrets: []
+
+# ---------------------------------------------------------------------------
+# Ingress
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: nginx
+  appHost: app.tipsbank.local
+  apiHost: api.tipsbank.local
+  tls:
+    enabled: true
+    issuer: selfsigned-issuer
+  rateLimitRps: "50"
+  rateLimitBurstMultiplier: "1"
+
+# ---------------------------------------------------------------------------
+# Postgres (StatefulSet em tipsbank-contas)
+# ---------------------------------------------------------------------------
+postgres:
+  image: postgres:16-alpine
+  user: tipsbank
+  password: tipsbank
+  db: tipsbank
+  storage: 2Gi
+  storageClass: ""   # "" = StorageClass padrão do cluster
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+# ---------------------------------------------------------------------------
+# api-contas
+# ---------------------------------------------------------------------------
+contas:
+  replicas: 2
+  image:
+    repository: romulow22/tipsbank-api-contas
+    tag: v1.0.0
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    cpuUtilization: 70
+
+# ---------------------------------------------------------------------------
+# api-transacoes
+# ---------------------------------------------------------------------------
+transacoes:
+  replicas: 2
+  appVersion: "v1"
+  image:
+    repository: romulow22/tipsbank-api-transacoes
+    tag: v2.0.0
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  hpa:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 15
+    cpuUtilization: 70
+
+# ---------------------------------------------------------------------------
+# auditoria
+# ---------------------------------------------------------------------------
+auditoria:
+  replicas: 3
+  image:
+    repository: romulow22/tipsbank-auditoria
+    tag: v1.0.0
+  storage: 5Gi
+  storageClass: nfs-ganesha
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 6
+    memoryUtilization: 75
+
+# ---------------------------------------------------------------------------
+# web (nginx-unprivileged)
+# ---------------------------------------------------------------------------
+web:
+  replicas: 2
+  image:
+    repository: romulow22/tipsbank-web
+    tag: v1.0.0
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  hpa:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    cpuUtilization: 70
+
+# ---------------------------------------------------------------------------
+# Observabilidade
+# ---------------------------------------------------------------------------
+monitoring:
+  enabled: true
+  namespace: tipsbank-monitoring
+
+# ---------------------------------------------------------------------------
+# RBAC (Roles, ClusterRoles, ServiceAccounts)
+# ---------------------------------------------------------------------------
+rbac:
+  enabled: true
+  trustedRegistry: romulow22
+
+# ---------------------------------------------------------------------------
+# Kyverno Policies
+# ---------------------------------------------------------------------------
+kyverno:
+  enabled: true

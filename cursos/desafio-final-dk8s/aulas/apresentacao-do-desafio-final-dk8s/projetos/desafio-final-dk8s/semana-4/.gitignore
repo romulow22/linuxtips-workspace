@@ -1,0 +1,65 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+ENV/
+
+# Dist
+dist/
+build/
+*.egg-info/
+
+# Env
+.env
+.env.local
+.env.*.local
+*.env-*
+
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Kubernetes artefacts (do aluno, nunca commitados)
+kubeconfig
+*.kubeconfig
+kubeconfig-*
+*.key
+*.pub
+*.crt
+*.csr
+ca.crt
+admin.conf
+
+# Evidências pessoais do aluno
+#docs/EVIDENCIAS.md
+evidencias/
+
+# Helm
+helm/*/charts/
+helm/*/Chart.lock
+*.tgz
+
+# Locust output
+locust/reports/
+
+# Vagrant
+.vagrant/
+joincluster.sh
+
+evidencias/kubeconfigs/certs/

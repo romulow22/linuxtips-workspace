@@ -1,0 +1,43 @@
+# Vagrant/kubeadm: Ingress com *.tipsbank.local, storage via nfs-ganesha.
+grafana:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - grafana.tipsbank.local
+  persistence:
+    enabled: true
+    storageClassName: nfs-ganesha
+    size: 2Gi
+
+prometheus:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - prometheus.tipsbank.local
+  prometheusSpec:
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: nfs-ganesha
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 8Gi
+
+alertmanager:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    hosts:
+      - alertmanager.tipsbank.local
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: nfs-ganesha
+          accessModes: [ReadWriteOnce]
+          resources:
+            requests:
+              storage: 2Gi

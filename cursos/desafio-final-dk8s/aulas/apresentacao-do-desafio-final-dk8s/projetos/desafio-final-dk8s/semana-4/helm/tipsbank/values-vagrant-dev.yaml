@@ -1,0 +1,32 @@
+## values-vagrant-dev.yaml — Vagrant/kubeadm + ambiente DEV
+## Uso: helm install tipsbank helm/tipsbank/ -f helm/tipsbank/values-vagrant-dev.yaml
+
+global:
+  env: dev
+  imagePullPolicy: IfNotPresent
+
+postgres:
+  storageClass: local-path   # Rancher local-path-provisioner (default em kubeadm/Vagrant)
+  storage: 2Gi
+
+contas:
+  replicas: 1
+  hpa:
+    enabled: false
+
+transacoes:
+  replicas: 1
+  hpa:
+    enabled: false
+
+auditoria:
+  replicas: 1
+  storageClass: nfs-ganesha
+  storage: 5Gi
+  hpa:
+    enabled: false
+
+web:
+  replicas: 1
+  hpa:
+    enabled: false

@@ -1,0 +1,20 @@
+# Configurações comuns para EKS e Vagrant.
+# Garante que todos os ServiceMonitors e PrometheusRules do cluster sejam coletados,
+# independente do label 'release' (padrão da chart).
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    retention: 15d
+
+grafana:
+  adminPassword: prom-operator
+  sidecar:
+    dashboards:
+      enabled: true
+      searchNamespace: ALL
+
+alertmanager:
+  alertmanagerSpec:
+    retention: 120h

@@ -1,0 +1,69 @@
+## values-vagrant-prod.yaml — Vagrant/kubeadm + ambiente PROD (hardware limitado)
+## Uso: helm install tipsbank helm/tipsbank/ -f helm/tipsbank/values-vagrant-prod.yaml
+
+global:
+  env: prod
+  imagePullPolicy: Always
+
+postgres:
+  storageClass: local-path
+  storage: 5Gi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: "1"
+      memory: 1Gi
+
+contas:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4   # limitado pelo hardware do Vagrant
+
+transacoes:
+  replicas: 2
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+
+auditoria:
+  replicas: 2
+  storageClass: nfs-ganesha
+  storage: 10Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+
+web:
+  replicas: 2
+  hpa:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 4
+    cpuUtilization: 70
