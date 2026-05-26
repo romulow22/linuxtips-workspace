@@ -1,0 +1,59 @@
+{{- if .Values.locust.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: locust
+  namespace: {{ .Values.monitoring.namespace }}
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+    app: locust
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: locust
+  template:
+    metadata:
+      labels:
+        app: locust
+        team: {{ .Values.global.team }}
+        env: {{ .Values.global.env }}
+    spec:
+      containers:
+        - name: locust
+          image: {{ .Values.locust.image }}
+          imagePullPolicy: {{ include "tipsbank.imagePullPolicy" . }}
+          args:
+            - -f
+            - /mnt/locust/locustfile.py
+            - --host
+            - {{ .Values.locust.targetHost }}
+            {{- if .Values.locust.basePath }}
+            - --web-base-path
+            - {{ .Values.locust.basePath }}
+            {{- end }}
+          ports:
+            - containerPort: 8089
+              name: web
+          env:
+            - name: LOCUST_WEB_PORT
+              value: "8089"
+          resources:
+            {{- toYaml .Values.locust.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: locust
+  namespace: {{ .Values.monitoring.namespace }}
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+    app: locust
+spec:
+  selector:
+    app: locust
+  ports:
+    - name: web
+      port: 8089
+      targetPort: 8089
+{{- end }}

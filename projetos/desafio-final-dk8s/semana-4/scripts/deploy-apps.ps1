@@ -33,7 +33,7 @@ param(
     [string]$EnvType = "dev",
 
     [string]$ChartRef     = "oci://registry-1.docker.io/romulow22/tipsbank",
-    [string]$ChartVersion = "1.0.1",
+    [string]$ChartVersion = "1.0.3",
     [string]$ReleaseName  = "tipsbank"
 )
 
@@ -107,7 +107,7 @@ if ($Mode -eq "helm") {
         $ChartRef,
         "--version", $ChartVersion,
         "--values", $valuesFile,
-        "--wait", "--timeout", "10m"
+        "--wait", "--timeout", "10m", "--debug"
     )
 
     # No EKS, injetar o FQDN do NLB nos hosts de ingress

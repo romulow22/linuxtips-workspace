@@ -234,6 +234,13 @@ function Remove-EKSCluster {
     Write-Host "Cluster destruido." -ForegroundColor Green
 }
 
+function Invoke-GerarCerts {
+    Write-Host "[certs] Gerando kubeconfigs RBAC para EKS..." -ForegroundColor Cyan
+    kubectl config use-context $EKS_CONTEXT | Out-Null
+    & "$SCRIPT_DIR\gerar-certificados.ps1"
+    if ($LASTEXITCODE -ne 0) { throw "gerar-certificados.ps1 falhou" }
+}
+
 function Show-Help {
     Write-Host @"
 
@@ -247,6 +254,7 @@ Commands:
   status              Show contexts, nodes, pods and ingresses
   addons              Install/upgrade Helm addons only (ingress-nginx, cert-manager, nfs-ganesha)
   deploy              Deploy/redeploy all app manifests (cluster must already exist)
+  certs               Generate RBAC kubeconfigs (SA tokens, EKS mode)
   kubeconfig          Export kubeconfig to kubeconfig-eks in current directory
     -Merge            Merge into default ~/.kube/config
   help                Show this help message
@@ -287,6 +295,7 @@ switch ($Command.ToLower()) {
         Show-Status
         Show-Summary
     }
+    "certs"      { kubectl config use-context $EKS_CONTEXT | Out-Null; Invoke-GerarCerts }
     "kubeconfig" { Get-EKSKubeconfig -Merge:$Merge }
     default { Show-Help }
 }

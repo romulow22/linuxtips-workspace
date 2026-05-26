@@ -325,6 +325,15 @@ function Invoke-AppDeploy {
     else { Print-Success "Apps implantados." }
 }
 
+# Generate RBAC kubeconfigs (X.509 via CSR API)
+function Invoke-GerarCerts {
+    Print-Header "Generating RBAC Kubeconfigs (kubeadm / X.509)"
+    kubectl config use-context kubeadm-local | Out-Null
+    & "$SCRIPT_DIR\gerar-certificados.ps1"
+    if ($LASTEXITCODE -ne 0) { Print-Error "gerar-certificados.ps1 falhou." }
+    else { Print-Success "Kubeconfigs gerados em evidencias\kubeconfigs\" }
+}
+
 # Full deploy: addons + apps
 function Invoke-FullDeploy {
     Install-Addons
@@ -373,6 +382,7 @@ Commands:
   addons        Install/upgrade Helm addons (ingress-nginx, cert-manager, nfs-ganesha)
   deploy        Deploy/redeploy all app manifests (cluster must already exist)
   ssh [node]    SSH into a node (default: control-plane)
+  certs         Generate RBAC kubeconfigs (X.509 via CSR API)
   kubeconfig    Get kubeconfig for local access
     -Merge      Merge the new config with your default kubeconfig
   logs [node]   Show logs from a node
@@ -395,6 +405,7 @@ switch ($cmd) {
     "deploy"     { Invoke-AppDeploy }
     "provision"  { Provision-Cluster }
     "ssh"        { SSH-Node $Node }
+    "certs"      { Invoke-GerarCerts }
     "kubeconfig" { Get-Kubeconfig -Merge:$Merge }
     "logs"       { Show-Logs $Node }
     "config"     { Load-Env; Show-Config }

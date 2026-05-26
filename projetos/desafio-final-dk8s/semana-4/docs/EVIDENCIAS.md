@@ -859,16 +859,11 @@ kubectl get pods -A | grep tipsbank
 
 ```
 # Abrir no browser:
-http://grafana.tipsbank.local
+https://grafana.tipsbank.local:30443
 # Login: admin / prom-operator
 
 # Mostrar: Dashboards → TipsBank SLO  (ou "Kubernetes / Workloads")
 # Mostrar: Status → Targets  (todos UP)
-```
-
-```bash
-# Alternativa via curl para confirmar Grafana up
-curl -s http://grafana.tipsbank.local/api/health | jq .
 ```
 
 ---
@@ -876,7 +871,7 @@ curl -s http://grafana.tipsbank.local/api/health | jq .
 ##### Ponto 4 — Transferência funcionando
 
 ```bash
-BASE="https://api.tipsbank.local"
+BASE="https://api.tipsbank.local:30443"
 
 # Criar conta A (origem)
 CONTA_A=$(curl -sk -X POST $BASE/contas/contas \
@@ -907,8 +902,8 @@ curl -sk $BASE/contas/contas/$CONTA_B | jq .
 
 ```bash
 # Abrir Locust no browser:
-# https://locust.tipsbank.local
-# Configurar: Users=50, Spawn rate=5, Host=https://api.tipsbank.local
+# http://locust.tipsbank.local:30080/
+# Configurar: Users=50, Spawn rate=5, Host=http://api-transacoes.tipsbank-transacoes.svc.cluster.local:8080
 # Clicar Start e aguardar carga estabilizar
 
 # Em outro terminal — mostrar HPA respondendo
@@ -946,7 +941,7 @@ kubectl get ingress ingress-api-transacoes-canary -n tipsbank-transacoes \
 
 # Demonstrar o split — executar 20 vezes e contar versões
 for i in $(seq 1 20); do
-  curl -sk https://api.tipsbank.local/transacoes/health/live | jq -r .version
+  curl -sk https://api.tipsbank.local:30443/transacoes/health/live | jq -r .version
 done | sort | uniq -c
 # Esperado: ~18x "v1", ~2x "v2"
 
@@ -990,10 +985,10 @@ helm history tipsbank
 
 # Fazer upgrade simulando uma mudança (ex: aumentar réplicas de contas)
 helm upgrade tipsbank oci://registry-1.docker.io/romulow22/tipsbank `
-    --version 1.0.1 `
+    --version 1.0.3 `
     -f helm/tipsbank/values-vagrant-prod.yaml `
     --set contas.replicas=3
-# REVISION 2
+# REVISION 3
 
 # Ver rollout
 kubectl rollout status deployment/api-contas -n tipsbank-contas
@@ -1021,19 +1016,3 @@ kubectl get pods -A | grep tipsbank
 kubectl get ns | grep tipsbank
 ```
 
----
-
-Checklist do vídeo:
-
-- [ ] `helm install tipsbank` num cluster limpo
-- [ ] Todos os pods subindo em `kubectl get pods -A --watch`
-- [ ] Acesso ao Grafana com métricas reais
-- [ ] Uma transferência funcionando via `curl https://api.tipsbank.local`
-- [ ] Locust gerando carga + HPA escalando no Grafana
-- [ ] Tentativa de deploy de um pod ruim sendo bloqueada pelo Kyverno
-- [ ] Canary v1/v2 em ação (split 90/10 visível)
-- [ ] Um dos 4 usuários RBAC tentando ação não autorizada e sendo bloqueado
-- [ ] Rollback de um deploy
-- [ ] Encerramento com `helm uninstall`
-
----

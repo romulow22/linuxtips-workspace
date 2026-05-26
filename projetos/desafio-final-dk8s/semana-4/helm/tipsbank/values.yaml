@@ -84,6 +84,23 @@ transacoes:
     minReplicas: 3
     maxReplicas: 15
     cpuUtilization: 70
+  canary:
+    enabled: true
+    weight: "10"          # % of /transacoes traffic forwarded to v2
+    headerName: X-Canary  # header to force v2: -H "X-Canary: true"
+    headerValue: "true"
+    replicas: 1
+    appVersion: "v2"
+    image:
+      repository: romulow22/tipsbank-api-transacoes
+      tag: v2.0.0
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
 
 # ---------------------------------------------------------------------------
 # auditoria
@@ -142,6 +159,24 @@ monitoring:
 rbac:
   enabled: true
   trustedRegistry: romulow22
+
+# ---------------------------------------------------------------------------
+# Locust (load testing)
+# ---------------------------------------------------------------------------
+locust:
+  enabled: true
+  host: locust.tipsbank.local   # vagrant; EKS falls back to ingress.apiHost
+  basePath: ""                  # "": serve at /; "/locust": needed on EKS (shared NLB host)
+  ingressPath: /                # must match basePath
+  image: romulow22/tipsbank-locust:v7.0.0
+  targetHost: http://api-transacoes.tipsbank-transacoes.svc.cluster.local:8080
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
 
 # ---------------------------------------------------------------------------
 # Kyverno Policies

@@ -11,6 +11,11 @@ ingress:
   tls:
     enabled: false   # NLB EKS termina TLS externamente; cert-manager não é necessário em dev
 
+locust:
+  host: ""            # falls back to ingress.apiHost (NLB FQDN)
+  basePath: /locust   # required: shared NLB host needs path routing
+  ingressPath: /locust
+
 postgres:
   storageClass: gp2
   storage: 2Gi

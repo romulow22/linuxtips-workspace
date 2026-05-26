@@ -16,6 +16,11 @@ ingress:
   rateLimitRps: "50"
   rateLimitBurstMultiplier: "1"
 
+locust:
+  host: ""            # falls back to ingress.apiHost (NLB FQDN)
+  basePath: /locust   # required: shared NLB host needs path routing
+  ingressPath: /locust
+
 postgres:
   storageClass: gp2
   storage: 10Gi
@@ -60,7 +65,7 @@ transacoes:
 auditoria:
   replicas: 3
   storageClass: nfs-ganesha
-  storage: 20Gi
+  storage: 8Gi
   resources:
     requests:
       cpu: 200m

@@ -50,9 +50,20 @@ Write-Host "Modo:    $modeLabel" -ForegroundColor Cyan
 Write-Host ""
 
 # Extrair CA do cluster uma vez (usada por ambos os modos)
+# Kubeconfigs gerados com insecure-skip-tls-verify (ex: kubeadm-local via vagrant)
+# nao embitem certificate-authority-data — nesse caso busca o CA do cluster diretamente.
 $caBase64 = kubectl config view --minify --flatten -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'
-$caBytes  = [Convert]::FromBase64String($caBase64)
-$CA_FILE  = [IO.Path]::GetTempFileName()
+if ($caBase64) {
+    $caBytes = [Convert]::FromBase64String($caBase64)
+} else {
+    Write-Host "  certificate-authority-data ausente no kubeconfig; obtendo CA do cluster..." -ForegroundColor DarkGray
+    $caPemLines = kubectl get configmap kube-root-ca.crt -n kube-public -o jsonpath='{.data.ca\.crt}' 2>$null
+    if (-not $caPemLines) { throw "Nao foi possivel obter o CA do cluster (kube-root-ca.crt)." }
+    # Normaliza CRLF -> LF para que o PEM seja parseado corretamente em todos os SO
+    $caPem = ($caPemLines -join "`n").TrimEnd() + "`n"
+    $caBytes = [System.Text.Encoding]::UTF8.GetBytes($caPem)
+}
+$CA_FILE = [IO.Path]::GetTempFileName()
 [IO.File]::WriteAllBytes($CA_FILE, $caBytes)
 
 # ---------------------------------------------------------------
@@ -220,7 +231,7 @@ if ($isEKS) {
     CriarUsuario "operador-contas"     "tipsbank-ops"
     CriarUsuario "operador-transacoes" "tipsbank-ops"
     CriarUsuario "auditor-global"      "tipsbank-audit"
-    CriarUsuario "sre"                 "system:masters"
+    CriarUsuario "sre"                 "tipsbank-sre"   # cluster-admin via ClusterRoleBinding by username, nao por grupo
 }
 
 # Limpeza

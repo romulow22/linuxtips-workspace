@@ -1,0 +1,19 @@
+{{- if .Values.transacoes.canary.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-transacoes-v2
+  namespace: tipsbank-transacoes
+  labels:
+    {{- include "tipsbank.labels" . | nindent 4 }}
+    app: api-transacoes
+    version: v2
+spec:
+  selector:
+    app: api-transacoes
+    version: v2
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+{{- end }}
