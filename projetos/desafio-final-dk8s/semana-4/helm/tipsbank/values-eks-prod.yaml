@@ -44,11 +44,11 @@ contas:
   hpa:
     enabled: true
     minReplicas: 2
-    maxReplicas: 10
+    maxReplicas: 6
     cpuUtilization: 70
 
 transacoes:
-  replicas: 3
+  replicas: 2
   resources:
     requests:
       cpu: 200m
@@ -58,12 +58,12 @@ transacoes:
       memory: 1Gi
   hpa:
     enabled: true
-    minReplicas: 3
-    maxReplicas: 15
+    minReplicas: 2
+    maxReplicas: 6
     cpuUtilization: 70
 
 auditoria:
-  replicas: 3
+  replicas: 2
   storageClass: nfs-ganesha
   storage: 8Gi
   resources:

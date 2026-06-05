@@ -820,6 +820,99 @@ O serviço `web` utiliza `nginx-unprivileged` (Alpine, UID 101) — é **nonroot
 
 ---
 
+---
+
+#### Pré-gravação — subir o cluster antes de gravar
+
+> Execute este roteiro **antes** de abrir o gravador de tela. Tempo estimado: **~15 min** (Vagrant) ou **~25 min** (EKS cold start).
+
+---
+
+##### Opção A — Vagrant (local, kubeadm)
+
+```powershell
+# 1. Entrar no diretório raiz do projeto
+cd H:\Cursos\linuxtips\linuxtips-workspace\projetos\desafio-final-dk8s\semana-4
+
+# 2. Subir as VMs (cria se não existirem, retoma se já existirem)
+.\scripts\cluster-vagrant.ps1 restart    # cluster já existe → reinicia e aguarda Ready
+# ou:
+.\scripts\cluster-vagrant.ps1 create     # cluster novo → vagrant up + addons
+
+# 3. Obter kubeconfig e apontar o contexto local
+.\scripts\cluster-vagrant.ps1 kubeconfig -Merge
+kubectl config use-context kubeadm-local
+
+# 4. Confirmar que todos os nós estão Ready
+kubectl get nodes
+# Esperado: controlplane + node1 + node2 + node3 todos Ready
+
+# 5. Confirmar que os addons estão Running (ingress-nginx, cert-manager, kyverno, nfs-provisioner)
+kubectl get pods -n ingress-nginx -n cert-manager -n kyverno -n nfs-provisioner
+# Se algum addon estiver faltando, instalar:
+.\scripts\install-addons.ps1 -Env vagrant
+
+# 6. Remover release anterior (garante demo de "cluster limpo" no Ponto 1)
+helm uninstall tipsbank --ignore-not-found
+
+# 7. Sanity check final antes de gravar
+kubectl get pods -A | grep -v "Running\|Completed"
+# Nenhuma linha = cluster 100% saudável
+```
+
+> **Dica**: se um nó aparecer `NotReady`, rode `kubectl rollout restart daemonset calico-node -n kube-system` e aguarde ~2 min (token CNI expirado — problema comum após suspender a VM).
+
+---
+
+##### Opção B — EKS (AWS)
+
+```powershell
+# 1. Entrar no diretório raiz do projeto
+cd H:\Cursos\linuxtips\linuxtips-workspace\projetos\desafio-final-dk8s\semana-4
+
+# 2. Carregar credenciais AWS e verificar acesso
+.\scripts\.env-aws.ps1            # carrega AWS_ACCESS_KEY_ID / SECRET / REGION
+aws sts get-caller-identity       # confirmar conta ativa
+
+# 3a. Cluster já existe → apenas buscar kubeconfig e verificar
+.\scripts\cluster-eks.ps1 kubeconfig -Merge
+kubectl config use-context eks-tipsbank
+kubectl get nodes                 # todos Ready
+
+# 3b. Cluster novo → criar (15-20 min) + addons automáticos
+.\scripts\cluster-eks.ps1 create
+
+# 4. Verificar NLB disponível (necessário para ingress)
+kubectl get svc ingress-nginx-controller -n ingress-nginx \
+  -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+# Deve retornar o FQDN do NLB (não vazio)
+
+# 5. Remover release anterior (garante demo de "cluster limpo" no Ponto 1)
+helm uninstall tipsbank --ignore-not-found
+
+# 6. Sanity check final antes de gravar
+kubectl get pods -A | grep -v "Running\|Completed"
+# Nenhuma linha = cluster 100% saudável
+```
+
+> **Custo**: lembre de rodar `.\scripts\cluster-eks.ps1 destroy` após a gravação para evitar cobranças.
+
+---
+
+##### Checklist final (ambos os ambientes)
+
+| # | Verificação | Comando rápido |
+|---|---|---|
+| ✅ | Contexto kubectl correto | `kubectl config current-context` |
+| ✅ | Todos os nós Ready | `kubectl get nodes` |
+| ✅ | ingress-nginx Running | `kubectl get pods -n ingress-nginx` |
+| ✅ | cert-manager Running | `kubectl get pods -n cert-manager` |
+| ✅ | Kyverno Running (4 pods) | `kubectl get pods -n kyverno` |
+| ✅ | Sem release Helm anterior | `helm list -A` |
+| ✅ | kubeconfigs RBAC gerados | `.\scripts\cluster-vagrant.ps1 certs` ou `.\scripts\cluster-eks.ps1 certs` |
+
+---
+
 #### Roteiro de gravação — comandos exatos (Vagrant cluster)
 
 > **Pré-requisito**: cluster Vagrant rodando com addons instalados (`.\scripts\install-addons.ps1 -Env vagrant`). Release Helm anterior removida.
@@ -833,13 +926,11 @@ O serviço `web` utiliza `nginx-unprivileged` (Alpine, UID 101) — é **nonroot
 helm list -A
 
 # Instalar a partir do OCI registry (cluster limpo)
-helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank `
-    --version 1.0.1 `
-    -f helm/tipsbank/values-vagrant-prod.yaml `
-    --wait --timeout 10m
+#Vagrant
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-vagrant-prod.yaml --wait --timeout 10m
+#EKS
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set ingress.apiHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --wait --timeout 10m
 ```
-
-> Use `values-vagrant-prod.yaml` para o vídeo — ele habilita HPA e replica count > 1, necessário para o ponto 5.
 
 ---
 
@@ -857,21 +948,33 @@ kubectl get pods -A | grep tipsbank
 
 ##### Ponto 3 — Grafana com métricas reais
 
+
+
 ```
 # Abrir no browser:
-https://grafana.tipsbank.local:30443
+Vagrant: https://grafana.tipsbank.local:30443
+EKS: https://[colocar id do ELB].elb.us-east-2.amazonaws.com/grafana
+
 # Login: admin / prom-operator
 
 # Mostrar: Dashboards → TipsBank SLO  (ou "Kubernetes / Workloads")
 # Mostrar: Status → Targets  (todos UP)
 ```
 
+
+
+
 ---
 
 ##### Ponto 4 — Transferência funcionando
 
 ```bash
+#Vagrant
 BASE="https://api.tipsbank.local:30443"
+#EKS:
+BASE="https://[colocar id do ELB].elb.us-east-2.amazonaws.com"
+
+
 
 # Criar conta A (origem)
 CONTA_A=$(curl -sk -X POST $BASE/contas/contas \
@@ -881,7 +984,7 @@ CONTA_A=$(curl -sk -X POST $BASE/contas/contas \
 echo "Conta A: $CONTA_A"
 
 # Criar conta B (destino)
-CONTA_B=$(curl -sk -X POST $BASE/contas/contas \
+$(curl -sk -X POST $BASE/contas/contas \
   -H "Content-Type: application/json" \
   -d '{"titular":"Bob Demo","documento":"22222222222","senha":"demo1234","saldo_inicial":0}' \
   | jq -r .id)
@@ -902,7 +1005,8 @@ curl -sk $BASE/contas/contas/$CONTA_B | jq .
 
 ```bash
 # Abrir Locust no browser:
-# http://locust.tipsbank.local:30080/
+# Vagrant: http://locust.tipsbank.local:30080
+#EKS: https://[colocar id do ELB].elb.us-east-2.amazonaws.com/locust/
 # Configurar: Users=50, Spawn rate=5, Host=http://api-transacoes.tipsbank-transacoes.svc.cluster.local:8080
 # Clicar Start e aguardar carga estabilizar
 
@@ -940,39 +1044,41 @@ kubectl get ingress ingress-api-transacoes-canary -n tipsbank-transacoes \
   -o jsonpath='{.metadata.annotations}' | jq .
 
 # Demonstrar o split — executar 20 vezes e contar versões
+
+#Vagrant: URL='https://api.tipsbank.local:30443/transacoes/health/live'
+#EKS :    URL='https://[colocar id do ELB].elb.us-east-2.amazonaws.com/transacoes/health/live'
+
 for i in $(seq 1 20); do
-  curl -sk https://api.tipsbank.local:30443/transacoes/health/live | jq -r .version
+  curl -sk $URL | jq -r .version
 done | sort | uniq -c
-# Esperado: ~18x "v1", ~2x "v2"
 
 # Forçar rota para v2 via header
-curl -sk https://api.tipsbank.local/transacoes/health/live \
+curl -sk $URL \
   -H "X-Canary: true" | jq .
-# Retorna: "version": "v2"
+
 ```
 
 ---
 
 ##### Ponto 8 — RBAC: usuário tentando ação não autorizada
 
+```powershell
+# Executar o Script para criação dos certificados e kubeconfigs para os perfis operador-contas, operador-transacoes, auditor-global e SRE.
+.\scripts\gerar-certificados.ps1 
+```
+
 ```bash
 # operador-contas: acesso permitido no namespace correto
-kubectl --kubeconfig=evidencias/kubeconfigs/operador-contas.kubeconfig \
-  get pods -n tipsbank-contas
+kubectl --kubeconfig=evidencias/kubeconfigs/operador-contas.kubeconfig get pods -n tipsbank-contas
 
 # operador-contas: BLOQUEADO em outro namespace
-kubectl --kubeconfig=evidencias/kubeconfigs/operador-contas.kubeconfig \
-  get pods -n tipsbank-transacoes
-# Error: Forbidden
+kubectl --kubeconfig=evidencias/kubeconfigs/operador-contas.kubeconfig get pods -n tipsbank-transacoes
 
 # auditor-global: pode listar pods em todos os namespaces
-kubectl --kubeconfig=evidencias/kubeconfigs/auditor-global.kubeconfig \
-  get pods -A | grep tipsbank
+kubectl --kubeconfig=evidencias/kubeconfigs/auditor-global.kubeconfig get pods -A | grep tipsbank
 
 # auditor-global: BLOQUEADO para deletar (readonly)
-kubectl --kubeconfig=evidencias/kubeconfigs/auditor-global.kubeconfig \
-  delete pod postgres-0 -n tipsbank-contas
-# Error: Forbidden
+kubectl --kubeconfig=evidencias/kubeconfigs/auditor-global.kubeconfig delete pod postgres-0 -n tipsbank-contas
 ```
 
 ---
@@ -984,21 +1090,23 @@ kubectl --kubeconfig=evidencias/kubeconfigs/auditor-global.kubeconfig \
 helm history tipsbank
 
 # Fazer upgrade simulando uma mudança (ex: aumentar réplicas de contas)
-helm upgrade tipsbank oci://registry-1.docker.io/romulow22/tipsbank `
-    --version 1.0.3 `
-    -f helm/tipsbank/values-vagrant-prod.yaml `
-    --set contas.replicas=3
-# REVISION 3
+
+#Vagrant
+helm upgrade tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-vagrant-prod.yaml --set contas.replicas=3
+
+#EKS
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set ingress.apiHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set contas.replicas=4 --wait --timeout 10m
+
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='a8f8ea2c9dad9441a8802cdd994e1392-9a0f129db8f26526.elb.us-east-2.amazonaws.com' --set ingress.apiHost='a8f8ea2c9dad9441a8802cdd994e1392-9a0f129db8f26526.elb.us-east-2.amazonaws.com' --set contas.replicas=4 --wait --timeout 10m
 
 # Ver rollout
 kubectl rollout status deployment/api-contas -n tipsbank-contas
 
-# Rollback para revisão 1
-helm rollback tipsbank 1
+# Rollback para revisão anterior
+helm rollback tipsbank 2
 
 # Confirmar histórico
 helm history tipsbank
-# REVISION 3 — Rollback to 1
 ```
 
 ---

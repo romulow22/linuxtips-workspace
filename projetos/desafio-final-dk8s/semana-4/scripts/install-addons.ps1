@@ -72,9 +72,9 @@ helm repo add kyverno              https://kyverno.github.io/kyverno/ 2>$null
 helm repo update | Out-Null
 Write-Host ""
 
-# [0/5] gp2 como default StorageClass (EKS only)
+# [1/7] gp2 como default StorageClass (EKS only)
 if ($Env -eq "eks") {
-    Write-Host "[0/5] Definindo gp2 como default StorageClass..." -ForegroundColor Cyan
+    Write-Host "[1/7] Definindo gp2 como default StorageClass..." -ForegroundColor Cyan
     kubectl patch storageclass gp2 `
         -p '{\"metadata\":{\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"true\"}}}'
     if ($LASTEXITCODE -ne 0) { Write-Warning "Nao foi possivel patchear gp2 (pode ja ser default)." }
@@ -82,8 +82,8 @@ if ($Env -eq "eks") {
     Write-Host ""
 }
 
-# [1/6] Kyverno
-Write-Host "[1/6] Kyverno..." -ForegroundColor Cyan
+# [2/7] Kyverno
+Write-Host "[2/7] Kyverno..." -ForegroundColor Cyan
 RecoverHelm "kyverno" "kyverno"
 helm upgrade --install kyverno kyverno/kyverno `
     --namespace kyverno `
@@ -94,8 +94,8 @@ if ($LASTEXITCODE -ne 0) { throw "kyverno falhou" }
 Write-Host "  Kyverno OK" -ForegroundColor Green
 Write-Host ""
 
-# [2/6] Ingress Nginx
-Write-Host "[2/6] Ingress Nginx ($Env)..." -ForegroundColor Cyan
+# [3/7] Ingress Nginx
+Write-Host "[3/7] Ingress Nginx ($Env)..." -ForegroundColor Cyan
 $ingressValues = "$HELMDIR\ingress-nginx\values-$Env.yaml"
 RecoverHelm "ingress-nginx" "ingress-nginx"
 helm upgrade --install ingress-nginx ingress-nginx/ingress-nginx `
@@ -107,8 +107,8 @@ if ($LASTEXITCODE -ne 0) { throw "ingress-nginx falhou" }
 Write-Host "  ingress-nginx OK" -ForegroundColor Green
 Write-Host ""
 
-# [3/6] cert-manager + ClusterIssuer
-Write-Host "[3/6] cert-manager..." -ForegroundColor Cyan
+# [4/7] cert-manager + ClusterIssuer
+Write-Host "[4/7] cert-manager..." -ForegroundColor Cyan
 RecoverHelm "cert-manager" "cert-manager"
 helm upgrade --install cert-manager jetstack/cert-manager `
     --namespace cert-manager `
@@ -127,8 +127,8 @@ if ($LASTEXITCODE -ne 0) { throw "ClusterIssuer falhou" }
 Write-Host "  cert-manager + ClusterIssuer OK" -ForegroundColor Green
 Write-Host ""
 
-# [4/6] NFS Ganesha provisioner
-Write-Host "[4/6] NFS Ganesha provisioner ($Env)..." -ForegroundColor Cyan
+# [5/7] NFS Ganesha provisioner
+Write-Host "[5/7] NFS Ganesha provisioner ($Env)..." -ForegroundColor Cyan
 $nfsValues = "$HELMDIR\nfs-provisioner\values-$Env.yaml"
 RecoverHelm "nfs-provisioner" "nfs-provisioner"
 helm upgrade --install nfs-provisioner nfs-ganesha/nfs-server-provisioner `
@@ -140,10 +140,10 @@ if ($LASTEXITCODE -ne 0) { throw "nfs-provisioner falhou" }
 Write-Host "  nfs-provisioner OK  (StorageClass: nfs-ganesha)" -ForegroundColor Green
 Write-Host ""
 
-# [5/6] NLB hostname (EKS only) -- aguarda antes do kube-prometheus para injetar o hostname
+# [6/7] NLB hostname (EKS only) -- aguarda antes do kube-prometheus para injetar o hostname
 $nlbHostname = ""
 if ($Env -eq "eks") {
-    Write-Host "[4/5] Aguardando hostname do NLB..." -ForegroundColor Cyan
+    Write-Host "[6/7] Aguardando hostname do NLB..." -ForegroundColor Cyan
     for ($i = 1; $i -le 36; $i++) {
         $nlbHostname = kubectl get svc ingress-nginx-controller -n ingress-nginx `
                            -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>$null
@@ -157,11 +157,11 @@ if ($Env -eq "eks") {
     Write-Host ""
 }
 
-# [6/6] kube-prometheus-stack + ServiceMonitors + PrometheusRule
+# [7/7] kube-prometheus-stack + ServiceMonitors + PrometheusRule
 # Separação de namespaces:
 #   monitoring          → stack (Prometheus, Grafana, Alertmanager)
 #   tipsbank-monitoring → configs da aplicação (ServiceMonitors, PrometheusRules)
-Write-Host "[6/6] kube-prometheus-stack..." -ForegroundColor Cyan
+Write-Host "[7/7] kube-prometheus-stack..." -ForegroundColor Cyan
 kubectl apply -f "$ROOT\k8s\monitoring\namespace.yaml" | Out-Null
 kubectl apply -f "$ROOT\k8s\tipsbank-monitoring\namespace.yaml" | Out-Null
 
@@ -199,5 +199,5 @@ if ($Env -eq "eks") {
 Write-Host ""
 
 Write-Host "================================================" -ForegroundColor Cyan
-Write-Host " Todos os addons instalados (6/6)  [env: $Env]" -ForegroundColor Cyan
+Write-Host " Todos os addons instalados (7/7)  [env: $Env]" -ForegroundColor Cyan
 Write-Host "================================================" -ForegroundColor Cyan
