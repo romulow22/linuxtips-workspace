@@ -2,6 +2,27 @@
 
 echo "[REQUIREMENTS] Installing requirements for Kubernetes cluster"
 
+# [TASK 0] Mitigação Hyper-V/VBS (host Windows que NÃO pode desligar o Hyper-V por
+# usar WSL2/Docker Desktop). Sob coexistência com Hyper-V o VirtualBox cai num modo
+# em que o TSC do guest fica instável: a VM congela por dezenas de segundos, o kernel
+# acusa "rcu_sched kthread starved" (RCU stall) e o SSH do provisionamento cai
+# ("SSH connection unexpectedly closed by the remote end").
+# kvm-clock é o clocksource paravirtualizado estável. Aplica em runtime (sem reboot)
+# e persiste no GRUB para os próximos boots.
+echo "[TASK 0] Mitigacao de clocksource (coexistencia com Hyper-V)"
+CS_PATH=/sys/devices/system/clocksource/clocksource0
+if grep -qw kvm-clock "$CS_PATH/available_clocksource" 2>/dev/null; then
+  echo kvm-clock > "$CS_PATH/current_clocksource"
+  echo "  clocksource atual: $(cat $CS_PATH/current_clocksource)"
+  if ! grep -q 'clocksource=kvm-clock' /etc/default/grub; then
+    sed -i 's/^GRUB_CMDLINE_LINUX_DEFAULT="\(.*\)"/GRUB_CMDLINE_LINUX_DEFAULT="\1 clocksource=kvm-clock"/' /etc/default/grub
+    update-grub
+    echo "  clocksource=kvm-clock adicionado ao GRUB (persistente)"
+  fi
+else
+  echo "  kvm-clock indisponivel; mantendo $(cat $CS_PATH/current_clocksource 2>/dev/null)"
+fi
+
 echo "[TASK 1] update hosts"
 echo '192.168.10.100 controlplane control-plane' | tee -a /etc/hosts
 init=1

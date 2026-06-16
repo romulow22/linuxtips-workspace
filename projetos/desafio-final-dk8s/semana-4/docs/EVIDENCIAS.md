@@ -835,12 +835,12 @@ O serviço `web` utiliza `nginx-unprivileged` (Alpine, UID 101) — é **nonroot
 cd H:\Cursos\linuxtips\linuxtips-workspace\projetos\desafio-final-dk8s\semana-4
 
 # 2. Subir as VMs (cria se não existirem, retoma se já existirem)
-.\scripts\cluster-vagrant.ps1 restart    # cluster já existe → reinicia e aguarda Ready
+.\scripts\cluster.ps1 vagrant restart    # cluster já existe → reinicia e aguarda Ready
 # ou:
-.\scripts\cluster-vagrant.ps1 create     # cluster novo → vagrant up + addons
+.\scripts\cluster.ps1 vagrant create     # cluster novo → vagrant up + addons
 
 # 3. Obter kubeconfig e apontar o contexto local
-.\scripts\cluster-vagrant.ps1 kubeconfig -Merge
+.\scripts\cluster.ps1 vagrant kubeconfig -Merge
 kubectl config use-context kubeadm-local
 
 # 4. Confirmar que todos os nós estão Ready
@@ -864,6 +864,71 @@ kubectl get pods -A | grep -v "Running\|Completed"
 
 ---
 
+##### Troubleshooting — `vagrant up` falha com "SSH connection unexpectedly closed by the remote end"
+
+**Sintoma**: durante o provisionamento (tipicamente no `[TASK 5] Kubernetes`, baixando os
+pacotes), o `vagrant up` aborta com:
+
+```
+The SSH connection was unexpectedly closed by the remote end. This
+usually indicates that SSH within the guest machine was unable to
+properly start up.
+ERROR: Vagrant up command failed.
+```
+
+**Causa raiz**: host Windows com **Hyper-V / VBS (Virtualization-Based Security) ativos**
+(obrigatório se você usa WSL2 / Docker Desktop). Nesse modo o VirtualBox roda em
+coexistência com o hypervisor do Windows e o **TSC do guest fica instável** — a VM
+**congela por dezenas de segundos** e o SSH do provisionamento cai. Confirmação dentro
+da VM:
+
+```bash
+sudo dmesg | grep -iE 'rcu|stall|clocksource'
+# rcu: rcu_sched kthread starved for 61063 jiffies!
+# rcu: Unless rcu_sched kthread gets sufficient CPU time, OOM is now expected behavior.
+# clocksource: Long readout interval ... cs_nsec: 244706922597   ← relógio pulou ~244s
+```
+
+> ℹ️ A queda **não corrompe** a instalação — `kubelet/kubeadm/kubectl` geralmente já
+> ficaram instalados. As VMs continuam `running`; basta retomar.
+
+**Remediação (já aplicada nos scripts)** — não exige desligar o Hyper-V:
+
+- `Vagrantfile`: `--paravirtprovider kvm` expõe o relógio paravirtualizado `kvm-clock`.
+- `scripts/requirements.sh` (`[TASK 0]`): fixa o guest em `kvm-clock` em runtime e
+  persiste `clocksource=kvm-clock` no GRUB.
+
+**Verificar o clocksource em uso** (deve ser `kvm-clock`, não `tsc`):
+
+```powershell
+vagrant ssh control-plane -c "cat /sys/devices/system/clocksource/clocksource0/current_clocksource"
+```
+
+**Aplicar em VMs já criadas sem reprovisionar** (corrige o cluster atual na hora):
+
+```powershell
+foreach ($vm in 'control-plane','node_1','node_2','node_3') {
+  vagrant ssh $vm -c "echo kvm-clock | sudo tee /sys/devices/system/clocksource/clocksource0/current_clocksource"
+}
+```
+
+**Retomar / refazer o provisionamento**:
+
+```powershell
+vagrant up --provision      # retoma node_1 e cria node_2/node_3
+# se preferir partir limpo:
+vagrant destroy -f; vagrant up
+```
+
+**Mitigações adicionais no host** (se ainda ocorrer freeze):
+
+- Plano de energia **Alto desempenho** e desabilitar suspensão automática durante o `up`.
+- Excluir a pasta das VMs do VirtualBox da verificação em tempo real do Defender
+  (I/O do antivírus durante o `apt` pode travar a VM).
+- Manter VirtualBox atualizado (≥ 7.x tem suporte melhor à coexistência com Hyper-V).
+
+---
+
 ##### Opção B — EKS (AWS)
 
 ```powershell
@@ -875,12 +940,12 @@ cd H:\Cursos\linuxtips\linuxtips-workspace\projetos\desafio-final-dk8s\semana-4
 aws sts get-caller-identity       # confirmar conta ativa
 
 # 3a. Cluster já existe → apenas buscar kubeconfig e verificar
-.\scripts\cluster-eks.ps1 kubeconfig -Merge
+.\scripts\cluster.ps1 eks kubeconfig -Merge
 kubectl config use-context eks-tipsbank
 kubectl get nodes                 # todos Ready
 
 # 3b. Cluster novo → criar (15-20 min) + addons automáticos
-.\scripts\cluster-eks.ps1 create
+.\scripts\cluster.ps1 eks create
 
 # 4. Verificar NLB disponível (necessário para ingress)
 kubectl get svc ingress-nginx-controller -n ingress-nginx \
@@ -895,7 +960,7 @@ kubectl get pods -A | grep -v "Running\|Completed"
 # Nenhuma linha = cluster 100% saudável
 ```
 
-> **Custo**: lembre de rodar `.\scripts\cluster-eks.ps1 destroy` após a gravação para evitar cobranças.
+> **Custo**: lembre de rodar `.\scripts\cluster.ps1 eks destroy` após a gravação para evitar cobranças.
 
 ---
 
@@ -909,7 +974,7 @@ kubectl get pods -A | grep -v "Running\|Completed"
 | ✅ | cert-manager Running | `kubectl get pods -n cert-manager` |
 | ✅ | Kyverno Running (4 pods) | `kubectl get pods -n kyverno` |
 | ✅ | Sem release Helm anterior | `helm list -A` |
-| ✅ | kubeconfigs RBAC gerados | `.\scripts\cluster-vagrant.ps1 certs` ou `.\scripts\cluster-eks.ps1 certs` |
+| ✅ | kubeconfigs RBAC gerados | `.\scripts\cluster.ps1 vagrant certs` ou `.\scripts\cluster.ps1 eks certs` |
 
 ---
 

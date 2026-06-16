@@ -22,20 +22,21 @@ Ordem de provisionamento por VM:
 | control-plane | `requirements.sh` → `controlplane.sh` → `post-install.sh` |
 | node_N | `requirements.sh` → `node.sh` |
 
-### `cluster.ps1`
-Script de gerenciamento para Windows (PowerShell 5.1+).
+### `scripts\cluster.ps1`
+Script de gerenciamento unificado (EKS + Vagrant) para Windows (PowerShell 5.1+).
+O primeiro argumento é o provider (`vagrant`); o segundo, o comando.
 
 ```
-.\cluster.ps1 create              # sobe as VMs e aguarda o cluster ficar pronto
-.\cluster.ps1 destroy             # destrói as VMs
-.\cluster.ps1 status              # VMs + nodes + pods
-.\cluster.ps1 kubeconfig          # extrai o kubeconfig para .\kubeconfig
-.\cluster.ps1 kubeconfig -Merge   # extrai e faz merge em ~\.kube\config
-.\cluster.ps1 ssh [node]          # SSH na VM (padrão: control-plane)
-.\cluster.ps1 validate            # roda validate-cluster.sh
-.\cluster.ps1 logs [node]         # logs do kubelet / kubeadm
-.\cluster.ps1 restart             # halt + up
-.\cluster.ps1 config              # exibe variáveis do .env
+.\scripts\cluster.ps1 vagrant create              # sobe as VMs e aguarda o cluster ficar pronto
+.\scripts\cluster.ps1 vagrant destroy             # destrói as VMs
+.\scripts\cluster.ps1 vagrant status              # VMs + nodes + pods
+.\scripts\cluster.ps1 vagrant kubeconfig          # extrai o kubeconfig para .\kubeconfig
+.\scripts\cluster.ps1 vagrant kubeconfig -Merge   # extrai e faz merge em ~\.kube\config
+.\scripts\cluster.ps1 vagrant ssh [node]          # SSH na VM (padrão: control-plane)
+.\scripts\cluster.ps1 vagrant validate            # roda validate-cluster.sh
+.\scripts\cluster.ps1 vagrant logs [node]         # logs do kubelet / kubeadm
+.\scripts\cluster.ps1 vagrant restart             # halt + up
+.\scripts\cluster.ps1 vagrant config              # exibe variáveis do .env
 ```
 
 ### `.env` / `.env.example`

@@ -60,7 +60,7 @@ if ($Env -eq "auto") {
 $targetContext = if ($Env -eq "eks") { $EKS_CONTEXT } else { $LOCAL_CONTEXT }
 kubectl config use-context $targetContext | Out-Null
 if ($LASTEXITCODE -ne 0) {
-    throw "Contexto '$targetContext' nao encontrado. Execute 'cluster-eks.ps1 kubeconfig' primeiro."
+    throw "Contexto '$targetContext' nao encontrado. Execute 'cluster.ps1 $Env kubeconfig' primeiro."
 }
 Write-Host "Context: $targetContext" -ForegroundColor DarkGray
 
