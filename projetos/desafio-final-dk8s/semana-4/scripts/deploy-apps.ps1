@@ -33,7 +33,7 @@ param(
     [string]$EnvType = "dev",
 
     [string]$ChartRef     = "oci://registry-1.docker.io/romulow22/tipsbank",
-    [string]$ChartVersion = "1.0.3",
+    [string]$ChartVersion = "1.0.4",
     [string]$ReleaseName  = "tipsbank"
 )
 

@@ -33,7 +33,7 @@ O primeiro argumento é o provider (`vagrant`); o segundo, o comando.
 .\scripts\cluster.ps1 vagrant kubeconfig          # extrai o kubeconfig para .\kubeconfig
 .\scripts\cluster.ps1 vagrant kubeconfig -Merge   # extrai e faz merge em ~\.kube\config
 .\scripts\cluster.ps1 vagrant ssh [node]          # SSH na VM (padrão: control-plane)
-.\scripts\cluster.ps1 vagrant validate            # roda validate-cluster.sh
+.\scripts\cluster.ps1 vagrant validate            # valida o cluster via kubectl (externo, sem SSH)
 .\scripts\cluster.ps1 vagrant logs [node]         # logs do kubelet / kubeadm
 .\scripts\cluster.ps1 vagrant restart             # halt + up
 .\scripts\cluster.ps1 vagrant config              # exibe variáveis do .env
@@ -95,9 +95,14 @@ Executado no control-plane **como usuário `vagrant`** (sem root), após o clust
 3. Cria namespace `examples`
 4. Gera `~/check-cluster.sh` para verificação rápida do cluster
 
-### `validate-cluster.sh`
-Script de validação de saúde do cluster. Deve ser executado no control-plane.
+### Validação de saúde do cluster
+A validação foi portada para `scripts\cluster.ps1` (função `Test-ClusterHealth`) e roda
+**externamente via `kubectl`** — não é mais um script `.sh` executado por SSH no control-plane.
 
-Verifica: acesso kubectl · nodes Ready · componentes do control-plane · CoreDNS · CNI (Calico/Flannel) · kube-proxy · pressão de recursos (memória/disco/PID) · DNS interno · eventos recentes.
+```
+.\scripts\cluster.ps1 vagrant validate
+```
 
-Saída: `✓` passa · `⚠` aviso · `✗` erro. Exit code `1` se houver erros.
+Verifica: acesso kubectl · componentes do control-plane (kube-apiserver/controller-manager/scheduler/etcd) · `/healthz` da API · nodes Ready · CoreDNS · CNI (Calico) · kube-proxy · pods do `kube-system` · pressão de recursos (memória/disco/PID).
+
+Saída: `[PASS]` · `[WARN]` · `[FAIL]`, com resumo final. A mesma função atende o EKS (`.\scripts\cluster.ps1 eks validate`), trocando os checks específicos (VPC CNI, status do cluster gerenciado).

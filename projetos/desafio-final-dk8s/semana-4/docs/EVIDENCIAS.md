@@ -822,6 +822,89 @@ O serviço `web` utiliza `nginx-unprivileged` (Alpine, UID 101) — é **nonroot
 
 ---
 
+#### Roteiro de subida do cluster do zero — Vagrant e EKS
+
+> Sequência completa: **criar cluster → instalar addons → deploy do Helm chart**.
+> Execute sempre a partir da raiz do projeto: `cd H:\Cursos\linuxtips\linuxtips-workspace\projetos\desafio-final-dk8s\semana-4`.
+
+**Addons instalados pelo `install-addons.ps1`** (em ambos os ambientes):
+`kyverno` · `ingress-nginx` · `cert-manager` (+ `ClusterIssuer`) · `nfs-provisioner` (StorageClass `nfs-ganesha`) · `kube-prometheus-stack`.
+No **EKS** ainda são aplicados dois passos extras: `gp2` como StorageClass default e a espera pelo hostname do **NLB**.
+
+---
+
+##### Vagrant (local, kubeadm) — do zero
+
+```powershell
+# 1. (opcional) ajustar recursos/quantidade de nós em scripts\.env-vagrant
+.\scripts\cluster.ps1 vagrant config        # confere NODE_COUNT, RAM, CPUs
+
+# 2. Subir o cluster (cria as VMs e valida a saúde)
+#    'create' faz: vagrant up → aguarda nodes/pods Ready → valida via kubectl
+#    externo (Test-ClusterHealth; faz o merge do context kubeadm-local se ainda
+#    não existir). NÃO instala addons nem faz deploy do chart.
+.\scripts\cluster.ps1 vagrant create
+
+# 3. Garantir contexto local ativo
+.\scripts\cluster.ps1 vagrant kubeconfig -Merge
+kubectl config use-context kubeadm-local
+kubectl get nodes                            # controlplane + nodeN todos Ready
+
+# 4. Instalar os addons (kyverno, ingress-nginx, cert-manager, nfs-provisioner, kube-prometheus-stack)
+.\scripts\cluster.ps1 vagrant addons
+
+# 5. Mapear os hosts de ingress no hosts file do Windows
+#    (C:\Windows\System32\drivers\etc\hosts — editar como Administrador).
+#    O ingress-nginx no Vagrant é NodePort 30080/30443, então acesse com :30080.
+192.168.10.100 app.tipsbank.local api.tipsbank.local locust.tipsbank.local grafana.tipsbank.local prometheus.tipsbank.local alertmanager.tipsbank.local
+
+# 6. Deploy do Helm chart TipsBank (a partir do OCI registry)
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.4 -f helm/tipsbank/values-vagrant-prod.yaml --wait --timeout 10m
+
+# 7. Verificar (revalida o cluster + checa pods)
+.\scripts\cluster.ps1 vagrant validate
+kubectl get all -A
+helm list -A
+```
+
+> `vagrant validate` roda 100% via `kubectl` externo (sem SSH no control-plane) e cria/atualiza o context `kubeadm-local` automaticamente se faltar — pode ser reexecutado a qualquer momento.
+
+---
+
+##### EKS (AWS) — do zero
+
+```powershell
+# 1. Carregar credenciais AWS e confirmar a conta
+.\scripts\.env-aws.ps1                       # AWS_ACCESS_KEY_ID / SECRET / REGION
+aws sts get-caller-identity
+
+# 2. Criar o cluster (15-20 min) — 'create' valida a saúde ao final, mas NÃO instala addons no EKS
+.\scripts\cluster.ps1 eks create
+kubectl config use-context eks-tipsbank
+kubectl get nodes                            # todos Ready
+
+# 3. Instalar os addons (inclui gp2 default + espera o NLB ficar pronto)
+.\scripts\cluster.ps1 eks addons
+
+# 3.1 (opcional) revalidar a saúde do cluster a qualquer momento
+.\scripts\cluster.ps1 eks validate
+
+# 4. Capturar o FQDN do NLB (host do ingress)
+$nlb = kubectl get svc ingress-nginx-controller -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}'
+$nlb                                         # não pode estar vazio
+
+# 5. Deploy do Helm chart (appHost/apiHost = NLB → routing por path)
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.4 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost=$nlb --set ingress.apiHost=$nlb --wait --timeout 10m
+
+# 6. Verificar
+helm list -A
+kubectl get all -A
+```
+
+> **Custo**: ao terminar, `.\scripts\cluster.ps1 eks destroy` para não acumular cobrança.
+
+---
+
 #### Pré-gravação — subir o cluster antes de gravar
 
 > Execute este roteiro **antes** de abrir o gravador de tela. Tempo estimado: **~15 min** (Vagrant) ou **~25 min** (EKS cold start).
@@ -837,7 +920,7 @@ cd H:\Cursos\linuxtips\linuxtips-workspace\projetos\desafio-final-dk8s\semana-4
 # 2. Subir as VMs (cria se não existirem, retoma se já existirem)
 .\scripts\cluster.ps1 vagrant restart    # cluster já existe → reinicia e aguarda Ready
 # ou:
-.\scripts\cluster.ps1 vagrant create     # cluster novo → vagrant up + addons
+.\scripts\cluster.ps1 vagrant create     # cluster novo → vagrant up + validação (addons no passo 5)
 
 # 3. Obter kubeconfig e apontar o contexto local
 .\scripts\cluster.ps1 vagrant kubeconfig -Merge
@@ -944,8 +1027,9 @@ aws sts get-caller-identity       # confirmar conta ativa
 kubectl config use-context eks-tipsbank
 kubectl get nodes                 # todos Ready
 
-# 3b. Cluster novo → criar (15-20 min) + addons automáticos
+# 3b. Cluster novo → criar (15-20 min). 'create' valida a saúde ao final, mas NÃO instala addons.
 .\scripts\cluster.ps1 eks create
+.\scripts\cluster.ps1 eks addons         # instala os addons (gp2 default + ingress/cert-manager/kyverno/nfs/monitoring)
 
 # 4. Verificar NLB disponível (necessário para ingress)
 kubectl get svc ingress-nginx-controller -n ingress-nginx \
@@ -974,6 +1058,7 @@ kubectl get pods -A | grep -v "Running\|Completed"
 | ✅ | cert-manager Running | `kubectl get pods -n cert-manager` |
 | ✅ | Kyverno Running (4 pods) | `kubectl get pods -n kyverno` |
 | ✅ | Sem release Helm anterior | `helm list -A` |
+| ✅ | Cluster validado (saúde) | `.\scripts\cluster.ps1 vagrant validate` ou `.\scripts\cluster.ps1 eks validate` |
 | ✅ | kubeconfigs RBAC gerados | `.\scripts\cluster.ps1 vagrant certs` ou `.\scripts\cluster.ps1 eks certs` |
 
 ---
@@ -992,9 +1077,9 @@ helm list -A
 
 # Instalar a partir do OCI registry (cluster limpo)
 #Vagrant
-helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-vagrant-prod.yaml --wait --timeout 10m
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.4 -f helm/tipsbank/values-vagrant-prod.yaml --wait --timeout 10m
 #EKS
-helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set ingress.apiHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --wait --timeout 10m
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.4 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set ingress.apiHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --wait --timeout 10m
 ```
 
 ---
@@ -1157,12 +1242,12 @@ helm history tipsbank
 # Fazer upgrade simulando uma mudança (ex: aumentar réplicas de contas)
 
 #Vagrant
-helm upgrade tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-vagrant-prod.yaml --set contas.replicas=3
+helm upgrade tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.4 -f helm/tipsbank/values-vagrant-prod.yaml --set contas.replicas=3
 
 #EKS
-helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set ingress.apiHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set contas.replicas=4 --wait --timeout 10m
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.4 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set ingress.apiHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set contas.replicas=4 --wait --timeout 10m
 
-helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.3 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='a8f8ea2c9dad9441a8802cdd994e1392-9a0f129db8f26526.elb.us-east-2.amazonaws.com' --set ingress.apiHost='a8f8ea2c9dad9441a8802cdd994e1392-9a0f129db8f26526.elb.us-east-2.amazonaws.com' --set contas.replicas=4 --wait --timeout 10m
+helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.4 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='a8f8ea2c9dad9441a8802cdd994e1392-9a0f129db8f26526.elb.us-east-2.amazonaws.com' --set ingress.apiHost='a8f8ea2c9dad9441a8802cdd994e1392-9a0f129db8f26526.elb.us-east-2.amazonaws.com' --set contas.replicas=4 --wait --timeout 10m
 
 # Ver rollout
 kubectl rollout status deployment/api-contas -n tipsbank-contas

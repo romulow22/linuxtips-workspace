@@ -18,7 +18,7 @@ build/
 .env
 .env.local
 .env.*.local
-*.env-*
+*.env-aws.ps1
 
 
 # IDE
@@ -53,6 +53,7 @@ evidencias/
 # Helm
 helm/*/charts/
 helm/*/Chart.lock
+helm/dist/
 *.tgz
 
 # Locust output

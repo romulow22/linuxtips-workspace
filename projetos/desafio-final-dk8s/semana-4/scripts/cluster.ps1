@@ -218,12 +218,20 @@ function Get-EKSKubeconfig {
             Copy-Item -Path $defaultKubeconfig -Destination $backup
             Print-Info "Backup: $backup"
 
-            # Remove stale eks-tipsbank entries before merging (so deleta se existir)
+            # Remove stale eks-tipsbank entries before merging (so deleta se existir).
+            # EAP=Continue + filtro de ErrorRecord silencia o aviso de stderr do kubectl
+            # ("warning: this removed your active context") -- que no PS 5.1, com 2>&1 e
+            # ErrorActionPreference=Stop, vazaria como NativeCommandError ao deletar o
+            # context atualmente ativo.
             $env:KUBECONFIG = $defaultKubeconfig
             $existingCtx = kubectl config get-contexts -o name 2>$null
             if ($existingCtx -contains $EKS_CONTEXT) {
-                kubectl config delete-context $EKS_CONTEXT | Out-Null
-                kubectl config delete-cluster $EKS_CONTEXT | Out-Null
+                $prevEap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+                & kubectl config delete-context $EKS_CONTEXT 2>&1 |
+                    Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | Out-Null
+                & kubectl config delete-cluster $EKS_CONTEXT 2>&1 |
+                    Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | Out-Null
+                $ErrorActionPreference = $prevEap
             }
             Remove-Item Env:KUBECONFIG -ErrorAction SilentlyContinue
         }
@@ -278,6 +286,105 @@ function Show-SummaryEKS {
     Write-Host ""
     Write-Host "Destruir quando nao estiver usando:" -ForegroundColor Yellow
     Write-Host "  .\scripts\cluster.ps1 eks destroy" -ForegroundColor White
+}
+
+# Valida a saude do cluster via kubectl, externamente (sem SSH no control-plane).
+# Porta o antigo validate-cluster.sh do Vagrant para PowerShell e serve tambem ao EKS,
+# bastando o contexto certo no kubeconfig (kubeadm-local ou eks-tipsbank).
+# As checagens especificas de cada ambiente (CNI, componentes do control-plane,
+# status do cluster gerenciado) sao selecionadas pelo parametro -Env.
+# Retorna $true se nao houver erros (avisos sao tolerados), $false caso contrario.
+function Test-ClusterHealth {
+    param([Parameter(Mandatory)][ValidateSet("eks", "vagrant")][string]$Env)
+
+    $ctx = if ($Env -eq "eks") { $EKS_CONTEXT } else { $LOCAL_CONTEXT }
+    Print-Header "Validando cluster ($Env)  [context: $ctx]"
+    kubectl config use-context $ctx 2>$null | Out-Null
+
+    $script:vErr = 0
+    $script:vWarn = 0
+    function _ok   { param([string]$m) Write-Host "  [PASS] $m" -ForegroundColor Green }
+    function _warn { param([string]$m) Write-Host "  [WARN] $m" -ForegroundColor Yellow; $script:vWarn++ }
+    function _fail { param([string]$m) Write-Host "  [FAIL] $m" -ForegroundColor Red;    $script:vErr++ }
+
+    # 1. Acesso kubectl
+    kubectl cluster-info 2>&1 | Out-Null
+    if ($LASTEXITCODE -eq 0) { _ok "kubectl acessa o cluster" }
+    else { _fail "kubectl nao acessa o cluster (context $ctx)"; Print-Error "Validacao abortada."; return $false }
+
+    # 2. Camada de controle
+    if ($Env -eq "eks") {
+        # Cluster gerenciado: status reportado pela API do EKS
+        $prevEap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        $status = aws eks describe-cluster --name $CLUSTER_NAME --region $REGION `
+            --query "cluster.status" --output text 2>&1 |
+            Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] }
+        $ErrorActionPreference = $prevEap
+        if ($status -eq "ACTIVE") { _ok "Cluster EKS ACTIVE" } else { _warn "Status do cluster EKS: $status" }
+    } else {
+        # kubeadm: componentes do control-plane rodam como pods estaticos no kube-system
+        foreach ($comp in @("kube-apiserver", "kube-controller-manager", "kube-scheduler", "etcd")) {
+            $running = (kubectl get pods -n kube-system -l component=$comp --no-headers 2>$null |
+                Where-Object { $_ -match 'Running' }).Count
+            if ($running -gt 0) { _ok "$comp rodando" } else { _fail "$comp nao esta rodando" }
+        }
+    }
+
+    # 3. Health endpoint da API (kubectl --raw, funciona externamente em ambos)
+    $healthz = kubectl get --raw /healthz 2>$null
+    if ($healthz -eq "ok") { _ok "API server /healthz = ok" } else { _warn "API server /healthz nao respondeu 'ok'" }
+
+    # 4. Nodes Ready
+    $nodeLines = kubectl get nodes --no-headers 2>$null
+    $total = ($nodeLines | Measure-Object).Count
+    $ready = ($nodeLines | Where-Object { $_ -match 'Ready' -and $_ -notmatch 'NotReady' }).Count
+    if ($total -gt 0 -and $ready -eq $total) { _ok "Todos os $total nodes Ready" }
+    elseif ($ready -gt 0) { _warn "$ready/$total nodes Ready" }
+    else { _fail "Nenhum node Ready" }
+
+    # 5. Componentes de sistema (kube-system) -- CNI varia por ambiente
+    $components = @( @{ Label = "CoreDNS"; Selector = "k8s-app=kube-dns" } )
+    if ($Env -eq "eks") {
+        $components += @{ Label = "aws-node (VPC CNI)"; Selector = "k8s-app=aws-node" }
+    } else {
+        $components += @{ Label = "Calico CNI"; Selector = "k8s-app=calico-node" }
+    }
+    $components += @{ Label = "kube-proxy"; Selector = "k8s-app=kube-proxy" }
+    foreach ($c in $components) {
+        $running = (kubectl get pods -n kube-system -l $c.Selector --no-headers 2>$null |
+            Where-Object { $_ -match 'Running' }).Count
+        if ($running -gt 0) { _ok "$($c.Label) rodando ($running pod(s))" }
+        else { _fail "$($c.Label) nao esta rodando" }
+    }
+
+    # 6. Pods do kube-system fora de Running/Completed
+    $notRunning = kubectl get pods -n kube-system --no-headers 2>$null |
+        Where-Object { $_ -notmatch 'Running' -and $_ -notmatch 'Completed' }
+    if (-not $notRunning) { _ok "Todos os pods do kube-system estao Running" }
+    else {
+        _warn "$($notRunning.Count) pod(s) do kube-system fora de Running"
+        $notRunning | ForEach-Object { Write-Host "         $_" -ForegroundColor DarkYellow }
+    }
+
+    # 7. Pressao de recursos nos nodes
+    foreach ($cond in @("MemoryPressure", "DiskPressure", "PIDPressure")) {
+        $pressured = kubectl get nodes -o jsonpath="{.items[*].status.conditions[?(@.type=='$cond')].status}" 2>$null
+        if ($pressured -match 'True') { _warn "$cond detectada em algum node" }
+        else { _ok "Sem $cond nos nodes" }
+    }
+
+    # Resumo
+    Write-Host ""
+    if ($script:vErr -eq 0 -and $script:vWarn -eq 0) {
+        Print-Success "Cluster ($Env) saudavel! Todos os checks passaram."
+        return $true
+    } elseif ($script:vErr -eq 0) {
+        Print-Warning "Cluster ($Env) utilizavel com $($script:vWarn) aviso(s) -- revise acima."
+        return $true
+    } else {
+        Print-Error "Cluster ($Env) com problemas: $($script:vErr) erro(s), $($script:vWarn) aviso(s)."
+        return $false
+    }
 }
 
 # ===========================================================================
@@ -387,9 +494,6 @@ function New-VagrantCluster {
         Print-Success "Cluster is ready!"
         Print-Info "Running final validation..."
         Validate-Cluster
-        Print-Info "Refreshing kubeconfig before addon install..."
-        Get-VagrantKubeconfig -Merge
-        Install-Addons
     } else {
         Print-Error "Cluster did not become healthy in time."
     }
@@ -422,8 +526,15 @@ function Show-StatusVagrant {
 }
 
 function Validate-Cluster {
-    Print-Header "Validating Cluster"
-    vagrant ssh control-plane -c "sudo /vagrant/scripts/validate-cluster.sh"
+    # Validacao externa via kubectl (sem SSH para rodar validate-cluster.sh no node).
+    # So usamos o control-plane via SSH se o context local ainda nao existir, apenas
+    # para extrair o kubeconfig.
+    kubectl config use-context $LOCAL_CONTEXT 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Print-Info "Context '$LOCAL_CONTEXT' ausente -- extraindo kubeconfig do control-plane..."
+        Get-VagrantKubeconfig -Merge
+    }
+    Test-ClusterHealth -Env "vagrant" | Out-Null
 }
 
 function SSH-Node {
@@ -521,17 +632,34 @@ function Get-VagrantKubeconfig {
         $kubeDir = Split-Path -Parent $defaultKubeconfig
         if (-not (Test-Path $kubeDir)) { New-Item -ItemType Directory -Path $kubeDir -Force | Out-Null }
 
+        # Remove lock file stale deixado por execucoes interrompidas (kubectl falha com
+        # "error: open ...config.lock: The file exists." ao tentar escrever no kubeconfig).
+        $lockFile = "$defaultKubeconfig.lock"
+        if (Test-Path $lockFile) {
+            Remove-Item $lockFile -Force
+            Print-Info "Lock file removido: $lockFile"
+        }
+
         if (Test-Path $defaultKubeconfig) {
             $backupFile = "$defaultKubeconfig.backup-$(Get-Date -Format 'yyyyMMdd-HHmmss')"
             Print-Info "Backing up current config to $backupFile"
             Copy-Item -Path $defaultKubeconfig -Destination $backupFile
 
-            # Remove any existing entries with this cluster name to avoid conflicts
+            # Remove any existing entries with this cluster name to avoid conflicts.
+            # EAP=Continue + filtro de ErrorRecord silencia o aviso de stderr do kubectl
+            # ("warning: this removed your active context") -- que no PS 5.1, com 2>&1 e
+            # ErrorActionPreference=Stop, vazaria como NativeCommandError ao deletar o
+            # context atualmente ativo.
             $env:KUBECONFIG = $defaultKubeconfig
-            & kubectl config delete-cluster $ClusterName 2>&1 | Out-Null
-            & kubectl config delete-context $ClusterName 2>&1 | Out-Null
+            $prevEap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+            & kubectl config delete-cluster $ClusterName 2>&1 |
+                Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | Out-Null
+            & kubectl config delete-context $ClusterName 2>&1 |
+                Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | Out-Null
             # Remove stale user from a previous merge of this same cluster
-            & kubectl config delete-user $uniqueUserName 2>&1 | Out-Null
+            & kubectl config delete-user $uniqueUserName 2>&1 |
+                Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] } | Out-Null
+            $ErrorActionPreference = $prevEap
             Remove-Item Env:KUBECONFIG -ErrorAction SilentlyContinue
         }
 
@@ -574,12 +702,12 @@ Shared commands:
   addons        Install/upgrade Helm addons (ingress-nginx, cert-manager, nfs-ganesha)
   deploy        Deploy/redeploy all app manifests (cluster must already exist)
   certs         Generate RBAC kubeconfigs
+  validate      Validate cluster health (kubectl checks, run externally -- no SSH)
   kubeconfig    Export kubeconfig for local access
     -Merge      Merge into the default ~/.kube/config
   help          Show this help message
 
 Vagrant-only commands:
-  validate      Validate cluster health
   restart       Restart the cluster and wait for readiness
   provision     Re-run provisioners
   ssh [node]    SSH into a node (default: control-plane)
@@ -620,14 +748,17 @@ switch ($prov) {
                 Test-PrerequisitesEKS
                 Save-LocalContext
                 New-EKSCluster
-                Install-Addons
-                #Invoke-AppDeploy
+                Test-ClusterHealth -Env "eks" | Out-Null
                 Show-StatusEKS
                 Show-SummaryEKS
             }
             "destroy" {
                 Test-PrerequisitesEKS
                 Remove-EKSCluster
+            }
+            "validate" {
+                Test-PrerequisitesEKS
+                Test-ClusterHealth -Env "eks" | Out-Null
             }
             "status" {
                 kubectl config use-context $EKS_CONTEXT 2>$null

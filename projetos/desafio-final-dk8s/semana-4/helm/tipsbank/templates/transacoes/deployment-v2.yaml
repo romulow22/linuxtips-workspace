@@ -40,6 +40,31 @@ spec:
                 topologyKey: kubernetes.io/hostname
       securityContext:
         fsGroup: 65532
+      initContainers:
+        # Aguarda o Postgres (DNS do headless service + porta 5432) antes de subir a app.
+        # Sem isso, a api-transacoes faz connect ansioso no startup, falha o DNS cross-namespace
+        # enquanto postgres-0 ainda nao esta Ready e sai com exit code 3 -> restarts.
+        - name: wait-for-postgres
+          image: busybox:1.36
+          imagePullPolicy: {{ include "tipsbank.imagePullPolicy" . }}
+          securityContext:
+            runAsUser: 65532
+          command:
+            - sh
+            - -c
+            - |
+              echo "[init] aguardando postgres-headless.tipsbank-contas:5432 ..."
+              until nc -z -w 3 postgres-headless.tipsbank-contas.svc.cluster.local 5432; do
+                sleep 3
+              done
+              echo "[init] postgres acessivel; iniciando api-transacoes"
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
       containers:
         - name: api-transacoes
           image: {{ .Values.transacoes.canary.image.repository }}:{{ .Values.transacoes.canary.image.tag }}
