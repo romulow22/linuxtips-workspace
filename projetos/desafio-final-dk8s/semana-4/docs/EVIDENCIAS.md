@@ -1067,7 +1067,9 @@ helm list -A
 
 #### Roteiro de gravação — comandos exatos (Vagrant cluster)
 
-> **Pré-requisito**: cluster Vagrant rodando com addons instalados (`.\scripts\install-addons.ps1 -Env vagrant`). Release Helm anterior removida.
+> **Pré-requisito**: cluster Vagrant ou EKS rodando com addons instalados.
+
+> **Link do Youtube**: [https://youtu.be/WQmiyWjOvLM](https://youtu.be/WQmiyWjOvLM)
 
 ---
 
@@ -1249,7 +1251,6 @@ helm upgrade tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.
 #EKS
 helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.4 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set ingress.apiHost='[colocar id do ELB].elb.us-east-2.amazonaws.com' --set contas.replicas=4 --wait --timeout 10m
 
-helm upgrade --install tipsbank oci://registry-1.docker.io/romulow22/tipsbank --version 1.0.4 -f helm/tipsbank/values-eks-prod.yaml --set ingress.appHost='a8f8ea2c9dad9441a8802cdd994e1392-9a0f129db8f26526.elb.us-east-2.amazonaws.com' --set ingress.apiHost='a8f8ea2c9dad9441a8802cdd994e1392-9a0f129db8f26526.elb.us-east-2.amazonaws.com' --set contas.replicas=4 --wait --timeout 10m
 
 # Ver rollout
 kubectl rollout status deployment/api-contas -n tipsbank-contas
