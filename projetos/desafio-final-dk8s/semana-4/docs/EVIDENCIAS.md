@@ -939,8 +939,9 @@ kubectl get pods -n ingress-nginx -n cert-manager -n kyverno -n nfs-provisioner
 helm uninstall tipsbank --ignore-not-found
 
 # 7. Sanity check final antes de gravar
-kubectl get pods -A | grep -v "Running\|Completed"
-# Nenhuma linha = cluster 100% saudável
+kubectl get pods -A
+kubectl get all -A
+helm list -A
 ```
 
 > **Dica**: se um nó aparecer `NotReady`, rode `kubectl rollout restart daemonset calico-node -n kube-system` e aguarde ~2 min (token CNI expirado — problema comum após suspender a VM).
@@ -1040,8 +1041,9 @@ kubectl get svc ingress-nginx-controller -n ingress-nginx \
 helm uninstall tipsbank --ignore-not-found
 
 # 6. Sanity check final antes de gravar
-kubectl get pods -A | grep -v "Running\|Completed"
-# Nenhuma linha = cluster 100% saudável
+kubectl get pods -A
+kubectl get all -A
+helm list -A
 ```
 
 > **Custo**: lembre de rodar `.\scripts\cluster.ps1 eks destroy` após a gravação para evitar cobranças.
@@ -1134,7 +1136,7 @@ CONTA_A=$(curl -sk -X POST $BASE/contas/contas \
 echo "Conta A: $CONTA_A"
 
 # Criar conta B (destino)
-$(curl -sk -X POST $BASE/contas/contas \
+CONTA_B=$(curl -sk -X POST $BASE/contas/contas \
   -H "Content-Type: application/json" \
   -d '{"titular":"Bob Demo","documento":"22222222222","senha":"demo1234","saldo_inicial":0}' \
   | jq -r .id)
